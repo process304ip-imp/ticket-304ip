@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Clock, Download, PieChart, ShieldCheck, TrendingUp, Loader2 } from 'lucide-react';
+import { Calendar, Clock, Download, PieChart, ShieldCheck, TrendingUp, Loader2, Star } from 'lucide-react';
 import { Role } from '../App';
 import { api, Ticket } from '../lib/api';
 
@@ -199,13 +199,16 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
       { label: 'Overdue', value: 5, color: '#ef4444' },
     ].filter(s => s.value > 0);
 
-    // 5. Customer Satisfaction (CSAT)
-    // Assuming some tickets have scores from 1-5
+    // 5. Customer Satisfaction (CSAT) - Real Data
+    const allFeedback = tickets
+      .map(t => (t as any).ticket_feedback?.[0])
+      .filter(Boolean);
+
     const csatSegments = [
-      { label: '5 Stars', value: tickets.filter(t => (t as any).feedback_score === 5).length || 2, color: '#059669' },
-      { label: '4 Stars', value: tickets.filter(t => (t as any).feedback_score === 4).length || 5, color: '#10b981' },
-      { label: '3 Stars', value: tickets.filter(t => (t as any).feedback_score === 3).length || 1, color: '#fbbf24' },
-      { label: '1-2 Stars', value: tickets.filter(t => (t as any).feedback_score && (t as any).feedback_score <= 2).length || 0, color: '#ef4444' },
+      { label: '5 Stars', value: allFeedback.filter((f: any) => f.score === 5).length, color: '#059669' },
+      { label: '4 Stars', value: allFeedback.filter((f: any) => f.score === 4).length, color: '#10b981' },
+      { label: '3 Stars', value: allFeedback.filter((f: any) => f.score === 3).length, color: '#fbbf24' },
+      { label: '1-2 Stars', value: allFeedback.filter((f: any) => f.score <= 2).length, color: '#ef4444' },
     ].filter(s => s.value > 0);
 
     return [
@@ -368,6 +371,69 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Customer Feedback Feed Section */}
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 className="font-black text-primary flex items-center gap-2">
+              <ShieldCheck className="text-emerald-500" size={18} />
+              Customer Feedback Feed
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">ความคิดเห็นล่าสุดจากผู้ใช้บริการ</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-[10px] font-black text-slate-400 uppercase">Avg. Score</p>
+              <p className="text-xl font-black text-emerald-600">
+                {(() => {
+                  const fb = tickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
+                  return fb.length > 0 ? (fb.reduce((acc, f) => acc + f.score, 0) / fb.length).toFixed(1) : '0.0';
+                })()}
+                <span className="text-xs text-slate-400 font-bold ml-0.5">/ 5.0</span>
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+          {tickets
+            .filter(t => (t as any).ticket_feedback?.length > 0)
+            .sort((a, b) => new Date((b as any).ticket_feedback[0].submitted_at).getTime() - new Date((a as any).ticket_feedback[0].submitted_at).getTime())
+            .slice(0, 6)
+            .map((ticket: any) => {
+              const fb = ticket.ticket_feedback[0];
+              return (
+                <div key={ticket.id} className="p-5 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => onSelectTicket(ticket.id)}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-mono text-[10px] font-black text-slate-400">{ticket.id}</span>
+                    <div className="flex gap-0.5">
+                      {[...Array(5)].map((_, i) => (
+                        <Star key={i} size={12} className={i < fb.score ? "fill-amber-400 text-amber-400" : "text-slate-200"} />
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-sm font-bold text-slate-800 line-clamp-2 min-h-[40px] mb-3">
+                    "{fb.comment || 'ไม่มีความเห็นเพิ่มเติม'}"
+                  </p>
+                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-50">
+                    <span className="text-[10px] font-black text-slate-400 truncate max-w-[120px]">
+                      {ticket.companies?.name || ticket.company_name}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {new Date(fb.submitted_at).toLocaleDateString('th-TH')}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          }
+          {tickets.filter(t => (t as any).ticket_feedback?.length > 0).length === 0 && (
+            <div className="col-span-full py-20 text-center text-slate-400 text-sm">
+              ยังไม่มีข้อมูลการประเมินความพึงพอใจ
+            </div>
+          )}
         </div>
       </section>
     </div>
