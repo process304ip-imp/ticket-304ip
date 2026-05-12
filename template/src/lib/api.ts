@@ -72,6 +72,8 @@ export const api = {
             const cat = (ticket.category || '').toLowerCase();
             return profileDepts.some(dept => {
               const d = (dept || '').toLowerCase();
+              // Generic technician/staff can see all open unassigned tickets
+              if (d === 'technician' || d === 'staff' || d === 'all') return true;
               return d.includes(cat) || cat.includes(d);
             });
           }
