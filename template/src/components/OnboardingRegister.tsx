@@ -195,7 +195,7 @@ export function OnboardingRegister({ onGoToLogin }: OnboardingRegisterProps) {
           full_name: fullName,
           role: 'customer',
           company_id: company?.id || null,
-          department: department,
+          department: department.split(',').map(s => s.trim()).filter(Boolean),
           phone: phone,
           email: email,
         });
@@ -362,12 +362,12 @@ export function OnboardingRegister({ onGoToLogin }: OnboardingRegisterProps) {
                 </label>
 
                 <label className="space-y-1.5 block">
-                  <span className="text-xs font-black text-slate-600 uppercase">ฝ่าย-ตำแหน่ง (optional)</span>
+                  <span className="text-xs font-black text-slate-600 uppercase">ฝ่าย-ตำแหน่ง (ระบุได้หลายแผนก คั่นด้วยคอมมา)</span>
                   <input
                     value={department}
                     onChange={e => setDepartment(e.target.value)}
                     className="w-full form-field"
-                    placeholder="เช่น Facility Manager, Admin"
+                    placeholder="เช่น Facility, Power, Water"
                   />
                 </label>
 

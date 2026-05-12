@@ -187,10 +187,12 @@ export function StaffManagement() {
                     <h4 className="font-black text-slate-800 truncate">{user.full_name || user.email}</h4>
                     <p className="text-xs font-bold text-slate-500 font-mono">EMP: {user.emp_id || '-'}</p>
                     <p className="text-xs text-slate-500 truncate">{user.email}</p>
-                    {user.department && (
+                    {user.department && (Array.isArray(user.department) ? user.department.length > 0 : !!user.department) && (
                       <div className="flex items-center gap-1 mt-1">
                         <Building2 size={10} className="text-slate-400" />
-                        <p className="text-[10px] text-slate-500">{user.department}</p>
+                        <p className="text-[10px] text-slate-500">
+                          {Array.isArray(user.department) ? user.department.join(', ') : user.department}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -278,10 +280,12 @@ export function StaffManagement() {
                   {/* EMP ID + Department */}
                   <td className="px-5 py-3.5">
                     <p className="text-xs font-mono font-black text-slate-700">{user.emp_id || '—'}</p>
-                    {user.department && (
+                    {user.department && (Array.isArray(user.department) ? user.department.length > 0 : !!user.department) && (
                       <div className="flex items-center gap-1 mt-0.5">
                         <Building2 size={10} className="text-slate-400" />
-                        <p className="text-[10px] text-slate-500">{user.department}</p>
+                        <p className="text-[10px] text-slate-500">
+                          {Array.isArray(user.department) ? user.department.join(', ') : user.department}
+                        </p>
                       </div>
                     )}
                   </td>

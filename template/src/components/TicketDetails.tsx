@@ -152,6 +152,37 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
     }
   };
 
+  const handleSelfAssign = async () => {
+    if (!ticket) return;
+    const ok = await confirm({
+      title: 'รับงาน (Self-Assign)',
+      message: `คุณต้องการรับผิดชอบ Ticket ${ticket.id} นี้ใช่หรือไม่?`,
+      confirmLabel: 'รับงาน',
+    });
+    if (!ok) return;
+
+    try {
+      const myName = profile?.full_name || user?.email || 'Technician';
+      await api.tickets.assign(ticket.id, myName, role, '', {
+        name: myName,
+        role: role,
+        id: user?.id
+      });
+      // Also set to In Progress if it was Open
+      if (ticket.status === 'Open') {
+        await api.tickets.update(ticket.id, { status: 'In Progress' }, {
+          name: myName,
+          role: role,
+          id: user?.id
+        });
+      }
+      toast.success('รับงานสำเร็จ', `คุณได้รับผิดชอบ Ticket ${ticket.id} แล้ว`);
+      fetchData();
+    } catch (error) {
+      toast.error('ไม่สามารถรับงานได้', 'กรุณาลองใหม่อีกครั้ง');
+    }
+  };
+
   const handleAssignTeam = async (teamName: string) => {
     if (!ticket) return;
     const ok = await confirm({
@@ -164,6 +195,7 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
     try {
       await api.tickets.assign(ticket.id, teamName, role, '', {
         name: profile?.full_name || 'Staff',
+        role: role,
         id: user?.id
       });
       toast.success('Assigned', `มอบหมายงานให้ทีม ${teamName} แล้ว`);
@@ -358,6 +390,18 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
               className="text-sm font-black py-2 px-4 border border-indigo-200 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 transition-colors w-full sm:w-auto"
             >
               {ticket.assignee ? 'เปลี่ยนทีมรับผิดชอบ' : 'เลือกทีมมอบหมาย'}
+            </button>
+          </div>
+        )}
+
+        {role === 'technician' && !ticket.assignee && ticket.status === 'Open' && (
+          <div className="shrink-0 w-full sm:w-auto">
+            <button
+              onClick={handleSelfAssign}
+              className="text-sm font-black py-2 px-6 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-md transition-all w-full sm:w-auto flex items-center justify-center gap-2"
+            >
+              <LogIn size={16} />
+              รับงาน (Self-Assign)
             </button>
           </div>
         )}

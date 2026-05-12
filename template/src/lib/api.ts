@@ -13,31 +13,37 @@ type TicketListOptions = {
   role?: string;
   profile?: {
     full_name?: string | null;
-    department?: string | null;
+    department?: string[] | null;
   } | null;
   mode?: 'board' | 'assigned';
 };
 
 const isTicketAssignedToProfile = (ticket: any, teams: ResponseTeam[], profile?: TicketListOptions['profile']) => {
   if (!profile) return true;
+  
+  const profileDepts = Array.isArray(profile.department) ? profile.department : (profile.department ? [profile.department] : []);
+  
   const values = new Set([
     profile.full_name,
-    profile.department,
+    ...profileDepts
   ].filter(Boolean).map(String));
 
   if (!ticket.assignee) return false;
   if (values.has(ticket.assignee)) return true;
 
   const assignedTeam = teams.find((team) => team.name === ticket.assignee);
-  if (!assignedTeam || !profile.department) return false;
+  if (!assignedTeam || profileDepts.length === 0) return false;
 
-  return [
+  const teamAttributes = [
     assignedTeam.id,
     assignedTeam.name,
     assignedTeam.role_label,
     assignedTeam.specialty,
     assignedTeam.area,
-  ].filter(Boolean).includes(profile.department);
+  ].filter(Boolean);
+
+  // Check if any of user's departments match any of the team's attributes
+  return profileDepts.some(dept => teamAttributes.includes(dept));
 };
 
 export const api = {
@@ -48,7 +54,32 @@ export const api = {
         .select('*, companies!tickets_company_id_fkey(name, area), ticket_affected_companies(company_id), ticket_feedback(*), ticket_logs(timestamp)')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      if (options.role === 'technician' || options.mode === 'assigned') {
+      if (options.role === 'technician') {
+        const teams = await api.teams.list().catch(() => []);
+        return (data || []).filter((ticket: any) => {
+          // 1. Show if assigned to me
+          if (isTicketAssignedToProfile(ticket, teams, options.profile)) return true;
+          
+          // 2. Show if Open and matches my specialty/department
+          if (ticket.status === 'Open' && !ticket.assignee) {
+            const profileDepts = Array.isArray(options.profile?.department) 
+              ? options.profile?.department 
+              : (options.profile?.department ? [options.profile.department] : []);
+
+            if (profileDepts.length === 0) return true; // Show all unassigned if no department set
+            
+            // Check if any of technician's departments match the ticket category
+            const cat = (ticket.category || '').toLowerCase();
+            return profileDepts.some(dept => {
+              const d = (dept || '').toLowerCase();
+              return d.includes(cat) || cat.includes(d);
+            });
+          }
+          
+          return false;
+        }) as Ticket[];
+      }
+      if (options.mode === 'assigned') {
         const teams = await api.teams.list().catch(() => []);
         return (data || []).filter((ticket: any) => isTicketAssignedToProfile(ticket, teams, options.profile)) as Ticket[];
       }
@@ -179,7 +210,7 @@ export const api = {
       if (error) throw error;
       return (data && data.length > 0) ? data[0] : null;
     },
-    async assign(ticketId: string, teamName: string, actorRole: string, note?: string, actor?: { name: string; id?: string }) {
+    async assign(ticketId: string, teamName: string, actorRole: string, note?: string, actor?: { name: string; role: any; id?: string }) {
       const teams = await api.teams.list();
       const team = teams.find((item) => item.name === teamName);
       const ticket = await api.tickets.get(ticketId) as any;
