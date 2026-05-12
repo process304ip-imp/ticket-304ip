@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="80" fill="#001e40"/>
+  <!-- Ticket shape -->
+  <path d="M120 180 C120 165 132 152 148 152 L364 152 C380 152 392 165 392 180 L392 210 C375 215 362 230 362 248 C362 266 375 281 392 286 L392 332 C392 347 380 360 364 360 L148 360 C132 360 120 347 120 332 L120 286 C137 281 150 266 150 248 C150 230 137 215 120 210 Z" fill="none" stroke="white" stroke-width="18" stroke-linejoin="round"/>
+  <!-- Zap icon inside -->
+  <path d="M272 192 L234 256 L258 256 L240 312 L278 248 L254 248 Z" fill="white"/>
+  <!-- Dotted line -->
+  <line x1="200" y1="248" x2="220" y2="248" stroke="white" stroke-width="6" stroke-dasharray="8 6" opacity="0.5"/>
+  <line x1="292" y1="248" x2="312" y2="248" stroke="white" stroke-width="6" stroke-dasharray="8 6" opacity="0.5"/>
+</svg>

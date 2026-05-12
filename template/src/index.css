@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+/* ── Leaflet z-index fix: prevent dashboard map from overlapping modals ── */
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-tile-container,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-zoom-box,
+.leaflet-image-layer,
+.leaflet-layer {
+  z-index: auto !important;
+}
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 400 !important;
+}
+/* Modal overlay must always be on top */
+.fixed.inset-0.z-50 {
+  z-index: 9999 !important;
+}
+
+/* Modern Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #e2e8f0 transparent;
+}
+
+@theme {
+  --color-primary: #001e40;
+  --color-primary-container: #003366;
+  --color-on-primary-container: #799dd6;
+  --color-primary-fixed: #d5e3ff;
+  --color-primary-fixed-dim: #a7c8ff;
+  --color-on-primary-fixed-variant: #1f477b;
+  
+  --color-surface: #f7f9fc;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f4f7;
+  --color-surface-container: #eceef1;
+  --color-surface-container-high: #e6e8eb;
+  --color-surface-container-highest: #e0e3e6;
+  
+  --color-outline-variant: #c3c6d1;
+  --color-error: #ba1a1a;
+  --color-tertiary-fixed: #ffdad6;
+  --color-on-tertiary-fixed-variant: #930010;
+
+  --font-sans: 'Manrope', 'Prompt', sans-serif;
+}
+
+body {
+  font-family: 'Manrope', 'Prompt', sans-serif;
+  background-color: var(--color-surface);
+  color: #191c1e;
+}
+
+@layer components {
+  .form-field {
+    border: 1px solid rgb(203 213 225);
+    border-radius: 0.5rem;
+    background: white;
+    padding: 0.625rem;
+    color: rgb(30 41 59);
+    font-size: 0.875rem;
+    outline: none;
+  }
+
+  .form-field:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgb(0 30 64 / 0.12);
+  }
+
+  .action-primary,
+  .action-secondary,
+  .action-success {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.5rem;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 800;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .action-primary {
+    background: var(--color-primary);
+    color: white;
+  }
+
+  .action-primary:hover {
+    background: var(--color-primary-container);
+  }
+
+  .action-secondary {
+    background: white;
+    color: rgb(51 65 85);
+    border: 1px solid rgb(203 213 225);
+  }
+
+  .action-secondary:hover {
+    background: rgb(248 250 252);
+  }
+
+  .action-success {
+    background: rgb(5 150 105);
+    color: white;
+  }
+
+  .action-success:hover {
+    background: rgb(4 120 87);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
