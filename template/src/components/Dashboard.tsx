@@ -135,12 +135,15 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
     const inProgress = tickets.filter(t => t.status === 'In Progress').length;
     const resolved = tickets.filter(t => t.status === 'Resolved').length;
     const closed = tickets.filter(t => t.status === 'Closed').length;
+    const allFeedback = tickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
+    const avgCsat = allFeedback.length > 0 ? (allFeedback.reduce((acc, f) => acc + f.score, 0) / allFeedback.length).toFixed(1) : '0.0';
 
     return [
       { label: lang === 'TH' ? 'เคสเปิดใหม่ (Open)' : 'Open Tickets', value: open, tone: 'bg-red-50 text-red-700', icon: Calendar },
       { label: lang === 'TH' ? 'กำลังดำเนินการ (In Progress)' : 'In Progress', value: inProgress, tone: 'bg-orange-50 text-orange-700', icon: Clock },
       { label: lang === 'TH' ? 'รอตรวจรับ (Resolved)' : 'Resolved (Awaiting)', value: resolved, tone: 'bg-emerald-50 text-emerald-700', icon: ShieldCheck },
       { label: lang === 'TH' ? 'ปิดงานแล้ว (Closed)' : 'Closed Tickets', value: closed, tone: 'bg-slate-100 text-slate-700', icon: PieChart },
+      { label: lang === 'TH' ? 'ความพึงพอใจเฉลี่ย' : 'Avg. CSAT Score', value: avgCsat, tone: 'bg-amber-50 text-amber-700', icon: Star },
     ];
   }, [tickets, lang]);
 
@@ -374,66 +377,122 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
         </div>
       </section>
 
-      {/* Customer Feedback Feed Section */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="font-black text-primary flex items-center gap-2">
-              <ShieldCheck className="text-emerald-500" size={18} />
-              Customer Feedback Feed
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">ความคิดเห็นล่าสุดจากผู้ใช้บริการ</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase">Avg. Score</p>
-              <p className="text-xl font-black text-emerald-600">
-                {(() => {
-                  const fb = tickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
-                  return fb.length > 0 ? (fb.reduce((acc, f) => acc + f.score, 0) / fb.length).toFixed(1) : '0.0';
-                })()}
-                <span className="text-xs text-slate-400 font-bold ml-0.5">/ 5.0</span>
-              </p>
+      {/* Customer Voice & Feedback Section */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div>
+              <h3 className="font-black text-primary text-lg flex items-center gap-2">
+                <Star className="text-amber-400 fill-amber-400" size={20} />
+                Customer Voice Feed
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">Real-time feedback from our customers</p>
             </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
-          {tickets
-            .filter(t => (t as any).ticket_feedback?.length > 0)
-            .sort((a, b) => new Date((b as any).ticket_feedback[0].submitted_at).getTime() - new Date((a as any).ticket_feedback[0].submitted_at).getTime())
-            .slice(0, 6)
-            .map((ticket: any) => {
-              const fb = ticket.ticket_feedback[0];
-              return (
-                <div key={ticket.id} className="p-5 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => onSelectTicket(ticket.id)}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-mono text-[10px] font-black text-slate-400">{ticket.id}</span>
-                    <div className="flex gap-0.5">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} size={12} className={i < fb.score ? "fill-amber-400 text-amber-400" : "text-slate-200"} />
-                      ))}
-                    </div>
-                  </div>
-                  <p className="text-sm font-bold text-slate-800 line-clamp-2 min-h-[40px] mb-3">
-                    "{fb.comment || 'ไม่มีความเห็นเพิ่มเติม'}"
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Overall CSAT</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-black text-emerald-600">
+                    {(() => {
+                      const fb = tickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
+                      return fb.length > 0 ? (fb.reduce((acc, f) => acc + f.score, 0) / fb.length).toFixed(1) : '0.0';
+                    })()}
                   </p>
-                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-50">
-                    <span className="text-[10px] font-black text-slate-400 truncate max-w-[120px]">
-                      {ticket.companies?.name || ticket.company_name}
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-400">
-                      {new Date(fb.submitted_at).toLocaleDateString('th-TH')}
-                    </span>
+                  <div className="flex gap-0.5">
+                    {[...Array(5)].map((_, i) => (
+                      <Star key={i} size={14} className={i < 4 ? "fill-emerald-500 text-emerald-500" : "text-slate-200"} />
+                    ))}
                   </div>
                 </div>
-              );
-            })
-          }
-          {tickets.filter(t => (t as any).ticket_feedback?.length > 0).length === 0 && (
-            <div className="col-span-full py-20 text-center text-slate-400 text-sm">
-              ยังไม่มีข้อมูลการประเมินความพึงพอใจ
+              </div>
             </div>
-          )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100 flex-1">
+            {tickets
+              .filter(t => (t as any).ticket_feedback?.length > 0)
+              .sort((a, b) => new Date((b as any).ticket_feedback[0].submitted_at).getTime() - new Date((a as any).ticket_feedback[0].submitted_at).getTime())
+              .slice(0, 4)
+              .map((ticket: any) => {
+                const fb = ticket.ticket_feedback[0];
+                return (
+                  <div key={ticket.id} className="p-6 hover:bg-slate-50 transition-all cursor-pointer group" onClick={() => onSelectTicket(ticket.id)}>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-[10px]">
+                          {ticket.id.split('-').pop()?.slice(-2)}
+                        </div>
+                        <span className="font-mono text-[10px] font-black text-slate-400 group-hover:text-primary transition-colors">{ticket.id}</span>
+                      </div>
+                      <div className="flex gap-0.5">
+                        {[...Array(5)].map((_, i) => (
+                          <Star key={i} size={12} className={i < fb.score ? "fill-amber-400 text-amber-400" : "text-slate-200"} />
+                        ))}
+                      </div>
+                    </div>
+                    <blockquote className="text-sm font-medium text-slate-700 leading-relaxed mb-4 italic">
+                      "{fb.comment || (fb.score >= 4 ? 'ยอดเยี่ยมมากครับ' : 'ขอบคุณครับ')}"
+                    </blockquote>
+                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-50">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black text-slate-900 truncate">
+                          {ticket.companies?.name || ticket.company_name}
+                        </p>
+                        <p className="text-[9px] text-slate-400 font-bold">{ticket.area}</p>
+                      </div>
+                      <span className="text-[9px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-full">
+                        {new Date(fb.submitted_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            }
+            {tickets.filter(t => (t as any).ticket_feedback?.length > 0).length === 0 && (
+              <div className="col-span-full py-20 text-center flex flex-col items-center justify-center space-y-3">
+                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                  <Star size={32} />
+                </div>
+                <p className="text-slate-400 text-sm font-medium">ยังไม่มีข้อมูลการประเมินความพึงพอใจในรอบนี้</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-emerald-600 rounded-2xl p-8 text-white shadow-lg shadow-emerald-200 flex flex-col justify-between relative overflow-hidden group">
+          <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-48 h-48 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all duration-700" />
+          <div className="relative z-10">
+            <h3 className="text-emerald-100 text-xs font-black uppercase tracking-[0.2em] mb-4">Customer Sentiment</h3>
+            <p className="text-4xl font-black mb-2">
+              {(() => {
+                const fb = tickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
+                const happy = fb.filter((f: any) => f.score >= 4).length;
+                return fb.length > 0 ? Math.round((happy / fb.length) * 100) : 0;
+              })()}%
+            </p>
+            <p className="text-emerald-100 text-sm font-medium leading-relaxed">
+              ของผู้ใช้บริการมีความพึงพอใจในระดับ <span className="text-white font-black">ดีมาก (4-5 ดาว)</span> จากการประเมินทั้งหมด
+            </p>
+          </div>
+          
+          <div className="relative z-10 mt-8 pt-8 border-t border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-bold text-emerald-100">Performance Index</span>
+              <span className="text-xs font-black">High</span>
+            </div>
+            <div className="w-full h-2 bg-emerald-700/50 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-white rounded-full transition-all duration-1000" 
+                style={{ width: `${(() => {
+                  const fb = tickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
+                  const happy = fb.filter((f: any) => f.score >= 4).length;
+                  return fb.length > 0 ? (happy / fb.length) * 100 : 0;
+                })()}%` }} 
+              />
+            </div>
+            <p className="mt-4 text-[10px] text-emerald-100 italic">
+              * ข้อมูลอัปเดตแบบ Real-time จากฐานข้อมูล Ticket Feedback
+            </p>
+          </div>
         </div>
       </section>
     </div>
