@@ -1,0 +1,21 @@
+[build]
+  base = "template"
+  command = "npm install && npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/api/idms/*"
+  to = "http://mobiledev.advanceagro.net/ws/api/idms/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/hrms/*"
+  to = "http://api-idms.advanceagro.net/hrms/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

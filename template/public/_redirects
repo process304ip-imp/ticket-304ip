@@ -1,3 +1,0 @@
-/api/idms/*  http://mobiledev.advanceagro.net/ws/api/idms/:splat  200!
-/api/hrms/*  http://api-idms.advanceagro.net/hrms/:splat  200!
-/*           /index.html                                   200
