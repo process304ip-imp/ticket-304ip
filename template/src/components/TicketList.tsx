@@ -353,6 +353,8 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
         matchesCard = ticket.status === 'In Progress';
       } else if (activeCardFilter === 'รอ Feedback') {
         matchesCard = ticket.status === 'Resolved';
+      } else if (activeCardFilter === 'Closed') {
+        matchesCard = ticket.status === 'Closed';
       }
 
       return matchesSearch && matchesArea && matchesCategory && matchesStatus && matchesChannel && matchesAssignee && matchesSla && matchesCard;
@@ -681,7 +683,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
 
   return (
     <div className="max-w-[1800px] mx-auto space-y-6">
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {loading && filteredTickets.length === 0 ? (
           <>
             <SkeletonCard />
@@ -695,6 +697,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
             { label: 'Critical / High', value: filteredTickets.filter((ticket) => ['Critical', 'High'].includes(ticket.priority)).length, tone: 'border-red-400', icon: AlertTriangle, filter: 'Critical / High' },
             { label: 'In Progress', value: filteredTickets.filter((ticket) => ticket.status === 'In Progress').length, tone: 'border-blue-400', icon: Loader2, filter: 'In Progress' },
             { label: 'รอ Feedback', value: filteredTickets.filter((ticket) => ticket.status === 'Resolved').length, tone: 'border-emerald-400', icon: Send, filter: 'รอ Feedback' },
+            { label: 'Closed', value: filteredTickets.filter((ticket) => ticket.status === 'Closed').length, tone: 'border-slate-400', icon: CheckCircle2, filter: 'Closed' },
           ].map((card) => {
             const Icon = card.icon;
             const isActive = activeCardFilter === card.filter;
