@@ -11,7 +11,7 @@ import {
 
 export type Role = 'customer' | 'crm' | 'technician' | 'admin';
 export type TicketCategory = 'Power' | 'Water Supply' | 'Facility';
-export type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+export type TicketStatus = 'Open' | 'In Progress' | 'Resolved (Tech)' | 'Resolved (CRM)' | 'Closed';
 export type TicketPriority = 'Low' | 'Medium' | 'High' | 'Critical';
 export type TicketChannel = 'Tel' | 'E-mail' | 'Letter' | 'Line' | 'WhatsApp' | 'Walk-in' | 'Customer Portal';
 export type TicketType = 'Service Issue' | 'Service Request' | 'Operational Task';
@@ -188,7 +188,7 @@ export const tickets: Ticket[] = [
     area: 'IP2',
     locationText: 'บ่อพักน้ำเสีย C-zone',
     latLng: [13.762, 101.5723],
-    status: 'Resolved',
+    status: 'Resolved (CRM)',
     priority: 'Medium',
     assignee: 'Facility Response Team',
     createdAt: '27 เม.ย. 2026 14:40',
@@ -268,7 +268,7 @@ export const ticketLogs: TicketLog[] = [
     authorName: 'Facility Response Team',
     message: 'ปรับลดวาล์วน้ำเสียและล้างพื้นที่เสร็จ รอ feedback ลูกค้าภายใน 48 ชั่วโมง',
     statusFrom: 'In Progress',
-    statusTo: 'Resolved',
+    statusTo: 'Resolved (Tech)',
     mediaUrls: ['photo-after.jpg'],
   },
 ];
@@ -317,23 +317,24 @@ export const responseTeams: ResponseTeam[] = [
 ];
 
 export const categoryColors: Record<TicketCategory, string> = {
-  Power: 'bg-red-50 text-red-700 border-red-200',
-  'Water Supply': 'bg-blue-50 text-blue-700 border-blue-200',
-  Facility: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  Power: 'bg-amber-50 text-amber-600 border-amber-100/50',
+  'Water Supply': 'bg-sky-50 text-sky-600 border-sky-100/50',
+  Facility: 'bg-indigo-50 text-indigo-600 border-indigo-100/50',
 };
 
 export const statusColors: Record<TicketStatus, string> = {
-  Open: 'bg-amber-100 text-amber-800',
-  'In Progress': 'bg-blue-100 text-blue-800',
-  Resolved: 'bg-emerald-100 text-emerald-800',
-  Closed: 'bg-slate-100 text-slate-700',
+  Open: 'bg-amber-50 text-amber-600 border-amber-100/50',
+  'In Progress': 'bg-blue-50 text-blue-600 border-blue-100/50',
+  'Resolved (Tech)': 'bg-indigo-50 text-indigo-600 border-indigo-100/50',
+  'Resolved (CRM)': 'bg-emerald-50 text-emerald-600 border-emerald-100/50',
+  Closed: 'bg-slate-50 text-slate-600 border-slate-100/50',
 };
 
 export const priorityColors: Record<TicketPriority, string> = {
-  Low: 'bg-slate-100 text-slate-700',
-  Medium: 'bg-blue-100 text-blue-800',
-  High: 'bg-orange-100 text-orange-800',
-  Critical: 'bg-red-100 text-red-800',
+  Low: 'bg-slate-50 text-slate-600 border-slate-100/50',
+  Medium: 'bg-blue-50 text-blue-600 border-blue-100/50',
+  High: 'bg-orange-50 text-orange-600 border-orange-100/50',
+  Critical: 'bg-red-50 text-red-600 border-red-100/50',
 };
 
 export const visibleTicketsForRole = (role: Role) => {
@@ -365,6 +366,6 @@ export const getDefaultView = (role: Role) => {
 export const reportCards = [
   { label: 'Open', value: '12', icon: AlertTriangle, tone: 'text-amber-700 bg-amber-50' },
   { label: 'In Progress', value: '18', icon: Users, tone: 'text-blue-700 bg-blue-50' },
-  { label: 'Resolved', value: '09', icon: ShieldCheck, tone: 'text-emerald-700 bg-emerald-50' },
+  { label: 'Resolved (CRM)', value: '09', icon: ShieldCheck, tone: 'text-emerald-700 bg-emerald-50' },
   { label: 'Auto-close Pending', value: '04', icon: Wrench, tone: 'text-slate-700 bg-slate-100' },
 ];

@@ -18,6 +18,9 @@ import {
   ChevronDown,
   FileText,
   Trash2,
+  Check,
+  CheckCircle,
+  PlayCircle,
   Star,
   User,
   ChevronLeft,
@@ -27,7 +30,10 @@ import {
   Droplets,
   Building2,
   HelpCircle,
-  Phone
+  XCircle,
+  ShieldCheck,
+  Phone,
+  Play
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Circle, MapContainer, Marker, TileLayer, Popup, useMapEvents, useMap } from 'react-leaflet';
@@ -41,7 +47,7 @@ import {
   priorityColors,
   statusColors,
 } from '../data';
-import { api, Ticket, Company, ResponseTeam } from '../lib/api';
+import { api, Ticket, Company, ResponseTeam, getAvatarUrl } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from './Toast';
@@ -95,8 +101,10 @@ function formatShortDateTime(raw: string | null | undefined) {
     month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false
   });
 }
+
 
 function formatAge(raw: string | null | undefined) {
   const date = parseDate(raw);
@@ -132,8 +140,13 @@ function getSlaState(ticket: any) {
   if (ticket.status === 'Closed') {
     return { label: 'Closed', className: 'bg-slate-100 text-slate-600 border-slate-200' };
   }
-  if (ticket.status === 'Resolved') {
-    return { label: ticket.auto_close_at ? `Auto-close ${formatTimeUntil(ticket.auto_close_at)}` : 'Waiting feedback', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+  if (ticket.status === 'Resolved (Tech)' || ticket.status === 'Resolved (CRM)') {
+    return { 
+      label: ticket.status === 'Resolved (CRM)' && ticket.auto_close_at 
+        ? `Auto-close ${formatTimeUntil(ticket.auto_close_at)}` 
+        : (ticket.status === 'Resolved (Tech)' ? 'Waiting CRM Confirm' : 'Waiting Feedback'), 
+      className: 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+    };
   }
 
   const due = parseDate(ticket.sla_due_at);
@@ -158,6 +171,8 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   const [tickets, setTickets] = useState<(Ticket & { companies: { name: string, area: string } | null })[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [teams, setTeams] = useState<ResponseTeam[]>([]);
+  const [dbCategories, setDbCategories] = useState<any[]>([]);
+  const [allSubCategories, setAllSubCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -174,6 +189,8 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   const [channelFilter, setChannelFilter] = useState('ทั้งหมด');
   const [assigneeFilter, setAssigneeFilter] = useState('ทั้งหมด');
   const [slaFilter, setSlaFilter] = useState('ทั้งหมด');
+  const [responderFilter, setResponderFilter] = useState('ทั้งหมด');
+  const [myTicketsOnly, setMyTicketsOnly] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 25;
   const [showMap, setShowMap] = useState(() => {
@@ -191,6 +208,8 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   const [affectedCompanyQuery, setAffectedCompanyQuery] = useState('');
   const [affectedCompanyIds, setAffectedCompanyIds] = useState<string[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  const [companySearch, setCompanySearch] = useState('');
+  const [zoneFilter, setZoneFilter] = useState('ทั้งหมด');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [formChannel, setFormChannel] = useState('Tel');
@@ -201,12 +220,28 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   // Feedback state
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [feedbackTicketId, setFeedbackTicketId] = useState<string | null>(null);
+  const [confirmClaim, setConfirmClaim] = useState<{ type: 'claim' | 'unclaim', ticketId: string, previousStatus?: string } | null>(null);
   const [feedback, setFeedback] = useState({ score: 0, comment: '' });
   
   // Image Upload State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+
+  const zones = useMemo(() => {
+    const set = new Set(companies.map(c => c.area).filter(Boolean));
+    return ['ทั้งหมด', ...Array.from(set).sort()];
+  }, [companies]);
+
+  const searchableCompanies = useMemo(() => {
+    return companies
+      .filter(c => {
+        const matchesZone = zoneFilter === 'ทั้งหมด' || c.area === zoneFilter;
+        const matchesSearch = c.name.toLowerCase().includes(companySearch.toLowerCase());
+        return matchesZone && matchesSearch;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  }, [companies, zoneFilter, companySearch]);
 
   useEffect(() => {
     return () => {
@@ -263,6 +298,13 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   }, [role, category]);
 
   useEffect(() => {
+    const options = getSubCategoryOptions();
+    if (options.length > 0 && !options.includes(subCategory)) {
+      setSubCategory(options[0]);
+    }
+  }, [category, allSubCategories, dbCategories]);
+
+  useEffect(() => {
     loadData();
     // Realtime subscription
     const channel = supabase.channel('tickets_changes')
@@ -277,10 +319,12 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   }, [role, profile?.id, profile?.department, initialMode]);
 
   async function loadData() {
-    const [ticketsResult, companiesResult, teamsResult] = await Promise.allSettled([
+    const [ticketsResult, companiesResult, teamsResult, categoriesResult, subCategoriesResult] = await Promise.allSettled([
       api.tickets.list({ role, profile, mode: initialMode }),
       api.companies.list(),
-      api.teams.list()
+      api.teams.list(),
+      api.masterData.listCategories(),
+      api.masterData.listSubCategories()
     ]);
 
     if (ticketsResult.status === 'fulfilled') {
@@ -291,9 +335,10 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
     }
 
     if (companiesResult.status === 'fulfilled') {
-      setCompanies(companiesResult.value);
-      if (!selectedCompanyId && role !== 'customer' && companiesResult.value.length > 0) {
-        setSelectedCompanyId(companiesResult.value[0].id);
+      const sorted = [...companiesResult.value].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+      setCompanies(sorted);
+      if (!selectedCompanyId && role !== 'customer' && sorted.length > 0) {
+        setSelectedCompanyId(sorted[0].id);
       }
     } else {
       console.error('Error loading companies:', companiesResult.reason);
@@ -305,6 +350,14 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
     } else {
       console.error('Error loading response teams:', teamsResult.reason);
       toast.error('โหลดทีมตอบสนองไม่สำเร็จ', teamsResult.reason?.message || 'กรุณาตรวจสอบตาราง response_teams');
+    }
+
+    if (categoriesResult.status === 'fulfilled') {
+      setDbCategories(categoriesResult.value);
+    }
+
+    if (subCategoriesResult.status === 'fulfilled') {
+      setAllSubCategories(subCategoriesResult.value);
     }
 
     setLoading(false);
@@ -344,6 +397,11 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
       const matchesChannel = channelFilter === 'ทั้งหมด' || ticket.channel === channelFilter;
       const matchesAssignee = assigneeFilter === 'ทั้งหมด' || ticket.assignee === assigneeFilter;
       const matchesSla = slaFilter === 'ทั้งหมด' || (slaFilter === 'เสี่ยง SLA' ? ticket.priority === 'Critical' || ticket.priority === 'High' : ticket.status === 'Resolved');
+      const matchesResponder = responderFilter === 'ทั้งหมด'
+        ? true
+        : responderFilter === 'Unassigned'
+          ? !(ticket as any).responder
+          : (ticket as any).responder?.full_name === responderFilter;
       
       // Quick Card Filter Logic
       let matchesCard = true;
@@ -352,18 +410,27 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
       } else if (activeCardFilter === 'In Progress') {
         matchesCard = ticket.status === 'In Progress';
       } else if (activeCardFilter === 'รอ Feedback') {
-        matchesCard = ticket.status === 'Resolved';
+        matchesCard = ticket.status === 'Resolved (CRM)';
+      } else if (activeCardFilter === 'Resolved (Tech)') {
+        matchesCard = ticket.status === 'Resolved (Tech)';
       } else if (activeCardFilter === 'Closed') {
         matchesCard = ticket.status === 'Closed';
       }
 
-      return matchesSearch && matchesArea && matchesCategory && matchesStatus && matchesChannel && matchesAssignee && matchesSla && matchesCard;
+      const matchesMyTickets = !myTicketsOnly || 
+        ticket.created_by === profile?.id || 
+        (ticket as any).responder_id === profile?.id;
+
+      return matchesSearch && matchesArea && matchesCategory && matchesStatus && matchesChannel && matchesAssignee && matchesSla && matchesCard && matchesMyTickets && matchesResponder;
+
     });
-  }, [tickets, searchQuery, areaFilter, categoryFilter, statusFilter, channelFilter, assigneeFilter, slaFilter, activeCardFilter]);
+  }, [tickets, searchQuery, areaFilter, categoryFilter, statusFilter, channelFilter, assigneeFilter, slaFilter, activeCardFilter, myTicketsOnly, profile?.id, responderFilter]);
+
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, areaFilter, categoryFilter, statusFilter, channelFilter, assigneeFilter, slaFilter, activeCardFilter]);
+  }, [searchQuery, areaFilter, categoryFilter, statusFilter, channelFilter, assigneeFilter, slaFilter, activeCardFilter, myTicketsOnly, responderFilter]);
+
 
   const paginatedTickets = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -374,6 +441,9 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
 
   const areas: string[] = ['ทั้งหมด', ...Array.from(new Set<string>(tickets.map((t) => t.area || '').filter(Boolean)))];
   const assignees: string[] = ['ทั้งหมด', ...Array.from(new Set<string>(tickets.map((t) => t.assignee || '').filter(Boolean)))];
+  const responders: string[] = ['ทั้งหมด', 'Unassigned', ...Array.from(new Set<string>(
+    tickets.map((t) => (t as any).responder?.full_name || '').filter(Boolean)
+  )).sort()];
   const channels = ['ทั้งหมด', 'Tel', 'E-mail', 'Letter', 'Line', 'WhatsApp', 'Walk-in', 'Customer Portal'];
   const allowedCategories: TicketCategory[] = role === 'customer' ? ['Water Supply', 'Facility'] : ['Power', 'Water Supply', 'Facility'];
   
@@ -419,6 +489,17 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   };
 
   const getSubCategoryOptions = () => {
+    // If we have database data, use it
+    if (allSubCategories.length > 0 && dbCategories.length > 0) {
+      const cat = dbCategories.find(c => c.name === category);
+      if (cat) {
+        const subs = allSubCategories
+          .filter(s => s.category_id === cat.id)
+          .map(s => s.name);
+        if (subs.length > 0) return subs;
+      }
+    }
+
     if (category === 'Power') return ['Voltage Drop', 'Blackout', 'Animal Fault', 'Unidentify'];
     if (category === 'Water Supply') return ['Slowly Water Flowing', 'No Water', 'Pipe Leakage', 'Water Quality'];
     return ['Safety: Fire', 'Waste Water Treatment', 'Road / Drainage', 'General Facility'];
@@ -653,6 +734,68 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
     }
   };
 
+  const handleClaimToggle = (ticket: Ticket) => {
+    if (!profile || (role !== 'admin' && role !== 'crm' && role !== 'technician')) return;
+
+    const isCustomerOpened = (ticket as any).creator?.role === 'customer';
+    const responder = (ticket as any).responder;
+    const isClaimedByMe = responder && profile.emp_id && responder.emp_id === profile.emp_id;
+
+    if (!isCustomerOpened) return; // Only allow claim/unclaim on customer-opened tickets
+
+    if (!responder) {
+      // No one has claimed — show claim confirm
+      setConfirmClaim({ type: 'claim', ticketId: ticket.id, previousStatus: ticket.status });
+    } else if (isClaimedByMe) {
+      // I claimed it — show unclaim confirm
+      setConfirmClaim({ type: 'unclaim', ticketId: ticket.id, previousStatus: ticket.status });
+    }
+    // Someone else claimed it — do nothing
+  };
+
+  const executeClaimToggle = async () => {
+    if (!confirmClaim || !profile) return;
+    setSubmitting(true);
+    try {
+      const isClaim = confirmClaim.type === 'claim';
+      const newResponderId = isClaim ? profile.id : null;
+      const newStatus = isClaim ? 'In Progress' : 'Open';
+      const prevStatus = confirmClaim.previousStatus || (isClaim ? 'Open' : 'In Progress');
+
+      // 1. Update ticket: responder_id + status
+      await api.tickets.update(
+        confirmClaim.ticketId,
+        { responder_id: newResponderId, status: newStatus } as any,
+        { name: profile.full_name || 'User', role: profile.role, id: profile.id }
+      );
+
+      // 2. Write audit log
+      await api.tickets.addLog({
+        ticket_id: confirmClaim.ticketId,
+        message: isClaim
+          ? `${profile.full_name} รับเป็น Response เคสนี้`
+          : `${profile.full_name} ยกเลิก Response เคสนี้`,
+        author_id: profile.id,
+        author_name: profile.full_name || 'User',
+        author_role: profile.role as any,
+        status_from: prevStatus,
+        status_to: newStatus,
+        is_internal: true,
+      });
+
+      toast.success(
+        isClaim ? 'รับเป็น Response เรียบร้อยแล้ว' : 'ยกเลิก Response เรียบร้อยแล้ว',
+        isClaim ? 'ระบบบันทึกการรับเคสแล้ว สถานะเปลี่ยนเป็น In Progress' : 'สถานะเคสกลับเป็น Open แล้ว'
+      );
+      loadData();
+    } catch (error: any) {
+      toast.error('เกิดข้อผิดพลาด', error.message);
+    } finally {
+      setSubmitting(false);
+      setConfirmClaim(null);
+    }
+  };
+
   const SkeletonCard = () => (
     <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm animate-pulse">
       <div className="flex justify-between items-start">
@@ -693,11 +836,11 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
           </>
         ) : (
           [
-            { label: initialMode === 'assigned' ? 'งานที่รับผิดชอบ' : 'Ticket ทั้งหมด', value: filteredTickets.length, tone: 'border-primary', icon: CheckCircle2, filter: null },
-            { label: 'Critical / High', value: filteredTickets.filter((ticket) => ['Critical', 'High'].includes(ticket.priority)).length, tone: 'border-red-400', icon: AlertTriangle, filter: 'Critical / High' },
-            { label: 'In Progress', value: filteredTickets.filter((ticket) => ticket.status === 'In Progress').length, tone: 'border-blue-400', icon: Loader2, filter: 'In Progress' },
-            { label: 'รอ Feedback', value: filteredTickets.filter((ticket) => ticket.status === 'Resolved').length, tone: 'border-emerald-400', icon: Send, filter: 'รอ Feedback' },
-            { label: 'Closed', value: filteredTickets.filter((ticket) => ticket.status === 'Closed').length, tone: 'border-slate-400', icon: CheckCircle2, filter: 'Closed' },
+            { label: initialMode === 'assigned' ? 'งานที่รับผิดชอบ' : 'Ticket ทั้งหมด', value: tickets.length, tone: 'border-primary', icon: CheckCircle2, filter: null },
+            { label: 'Critical / High', value: tickets.filter((ticket) => ['Critical', 'High'].includes(ticket.priority)).length, tone: 'border-red-400', icon: AlertTriangle, filter: 'Critical / High' },
+            { label: 'รอตรวจรับ (Tech)', value: tickets.filter((ticket) => ticket.status === 'Resolved (Tech)').length, tone: 'border-amber-400', icon: Loader2, filter: 'Resolved (Tech)' },
+            { label: 'รอ Feedback (CRM)', value: tickets.filter((ticket) => ticket.status === 'Resolved (CRM)').length, tone: 'border-emerald-400', icon: Send, filter: 'รอ Feedback' },
+            { label: 'Closed', value: tickets.filter((ticket) => ticket.status === 'Closed').length, tone: 'border-slate-400', icon: CheckCircle2, filter: 'Closed' },
           ].map((card) => {
             const Icon = card.icon;
             const isActive = activeCardFilter === card.filter;
@@ -747,12 +890,20 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
             </button>
             
             <button
+              onClick={() => setMyTicketsOnly(!myTicketsOnly)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all text-sm font-black tracking-tight ${myTicketsOnly ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+            >
+              <User size={16} className={myTicketsOnly ? 'text-white' : 'text-slate-400'} />
+              <span className="hidden sm:inline">เฉพาะงานของฉัน</span>
+            </button>
+
+            <button
               onClick={() => setShowMoreFilters(!showMoreFilters)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all text-sm font-medium ${showMoreFilters ? 'bg-slate-100 text-slate-900 border-slate-300' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
             >
               <Filter size={16} />
               <span className="hidden sm:inline">{showMoreFilters ? 'ซ่อนตัวกรอง' : 'ตัวกรอง'}</span>
-              {(areaFilter !== 'ทั้งหมด' || categoryFilter !== 'ทั้งหมด' || statusFilter !== 'ทั้งหมด' || channelFilter !== 'ทั้งหมด' || slaFilter !== 'ทั้งหมด' || assigneeFilter !== 'ทั้งหมด') && (
+              {(areaFilter !== 'ทั้งหมด' || categoryFilter !== 'ทั้งหมด' || statusFilter !== 'ทั้งหมด' || channelFilter !== 'ทั้งหมด' || slaFilter !== 'ทั้งหมด' || assigneeFilter !== 'ทั้งหมด' || responderFilter !== 'ทั้งหมด') && (
                 <span className="w-2 h-2 rounded-full bg-primary" />
               )}
             </button>
@@ -769,7 +920,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
         </div>
 
         {/* Active Filter Chips */}
-        {(areaFilter !== 'ทั้งหมด' || categoryFilter !== 'ทั้งหมด' || statusFilter !== 'ทั้งหมด' || channelFilter !== 'ทั้งหมด' || slaFilter !== 'ทั้งหมด' || assigneeFilter !== 'ทั้งหมด' || activeCardFilter) && (
+        {(areaFilter !== 'ทั้งหมด' || categoryFilter !== 'ทั้งหมด' || statusFilter !== 'ทั้งหมด' || channelFilter !== 'ทั้งหมด' || slaFilter !== 'ทั้งหมด' || assigneeFilter !== 'ทั้งหมด' || responderFilter !== 'ทั้งหมด' || activeCardFilter) && (
           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">Active Filters:</span>
             {activeCardFilter && (
@@ -784,6 +935,12 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                 <button onClick={() => setAreaFilter('ทั้งหมด')}><X size={12} /></button>
               </span>
             )}
+            {myTicketsOnly && (
+              <span className="flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-black border border-indigo-100">
+                Ticket ของฉัน
+                <button onClick={() => setMyTicketsOnly(false)}><X size={12} /></button>
+              </span>
+            )}
             {categoryFilter !== 'ทั้งหมด' && (
               <span className="flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold">
                 Category: {categoryFilter}
@@ -796,6 +953,12 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                 <button onClick={() => setStatusFilter('ทั้งหมด')}><X size={12} /></button>
               </span>
             )}
+            {responderFilter !== 'ทั้งหมด' && (
+              <span className="flex items-center gap-1 px-2 py-1 bg-violet-50 text-violet-700 rounded-full text-[10px] font-bold border border-violet-100">
+                Response: {responderFilter}
+                <button onClick={() => setResponderFilter('ทั้งหมด')}><X size={12} /></button>
+              </span>
+            )}
               <button 
                 onClick={() => {
                   setAreaFilter('ทั้งหมด');
@@ -804,6 +967,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                   setChannelFilter('ทั้งหมด');
                   setSlaFilter('ทั้งหมด');
                   setAssigneeFilter('ทั้งหมด');
+                  setResponderFilter('ทั้งหมด');
                   setActiveCardFilter(null);
                   setSearchQuery('');
                 }}
@@ -828,7 +992,8 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                 <FilterSelect label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as typeof statusFilter)} options={['ทั้งหมด', 'Open', 'In Progress', 'Resolved', 'Closed']} />
                 <FilterSelect label="Channel" value={channelFilter} onChange={setChannelFilter} options={channels} />
                 <FilterSelect label="SLA" value={slaFilter} onChange={setSlaFilter} options={['ทั้งหมด', 'เสี่ยง SLA', 'รอ Auto-close']} />
-                <FilterSelect label="Assignee" value={assigneeFilter} onChange={setAssigneeFilter} options={assignees} />
+                <FilterSelect label="Assignee (Team)" value={assigneeFilter} onChange={setAssigneeFilter} options={assignees} />
+                <FilterSelect label="Response (Staff)" value={responderFilter} onChange={setResponderFilter} options={responders} />
               </div>
             </motion.div>
           )}
@@ -880,6 +1045,22 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                       <p className="text-[10px] text-slate-500 font-medium line-clamp-1">
                         {ticket.area}{ticket.location_text ? ` • ${ticket.location_text}` : ''} {ticket.contact_name ? `• ${ticket.contact_name}` : ''}
                       </p>
+                      {(ticket as any).creator && (
+                        <div className="flex items-center gap-2 mt-2 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                          <div className="w-6 h-6 rounded-full overflow-hidden bg-white border border-slate-200 shrink-0">
+                            {(ticket as any).creator.emp_id ? (
+                              <img src={getAvatarUrl((ticket as any).creator.emp_id)!} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                <User size={12} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black text-slate-700 truncate">{(ticket as any).creator.full_name}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="shrink-0 w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center border border-slate-100">
                       <Navigation size={16} />
@@ -945,10 +1126,10 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
             <table className="w-full text-left border-separate border-spacing-0">
               <thead className="sticky top-0 z-30">
                 <tr className="bg-slate-50/90 backdrop-blur-md border-b border-slate-200">
-                  <th className="sticky left-0 z-40 bg-slate-50/90 backdrop-blur-md px-4 py-4 text-xs font-black uppercase tracking-wider text-slate-500 min-w-[210px] border-b border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">Ticket / Issue</th>
+                  <th className="sticky left-0 z-50 bg-slate-50/90 backdrop-blur-md px-4 py-4 text-xs font-black uppercase tracking-wider text-slate-500 min-w-[210px] border-b border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">Ticket / Issue</th>
                   <th className="px-3 py-4 text-xs font-black uppercase tracking-wider text-slate-500 min-w-[260px] border-b border-slate-200">Customer / Location</th>
                   <th className="px-3 py-4 text-xs font-black uppercase tracking-wider text-slate-500 min-w-[165px] border-b border-slate-200">Status / SLA</th>
-                  <th className="px-3 py-4 text-xs font-black uppercase tracking-wider text-slate-500 min-w-[170px] border-b border-slate-200">Owner</th>
+                  <th className="px-3 py-4 text-xs font-black uppercase tracking-wider text-slate-500 min-w-[170px] border-b border-slate-200">Response / Team</th>
                   <th className="px-3 py-4 text-xs font-black uppercase tracking-wider text-slate-500 min-w-[150px] border-b border-slate-200">Last Update</th>
                   <th className="sticky right-0 z-40 bg-slate-50/90 backdrop-blur-md px-4 py-4 text-xs font-black uppercase tracking-wider text-slate-500 text-right min-w-[100px] border-b border-slate-200 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">Action</th>
                 </tr>
@@ -978,43 +1159,36 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                         >
                           {ticket.id}
                         </button>
-                        <p className="text-sm font-black text-slate-800 leading-tight max-w-[210px] truncate">{ticket.sub_category || 'General request'}</p>
+                        <p className="text-sm font-black text-slate-800 leading-tight max-w-[180px] truncate">{ticket.sub_category || 'General request'}</p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight ${
-                            ticket.category === 'Power' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                            ticket.category === 'Water Supply' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                            ticket.category === 'Facility' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                            'bg-slate-50 text-slate-600 border-slate-200'
-                          }`}>
-                            {ticket.category === 'Power' && <Zap size={10} />}
-                            {ticket.category === 'Water Supply' && <Droplets size={10} />}
-                            {ticket.category === 'Facility' && <Building2 size={10} />}
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-black uppercase tracking-widest ${categoryColors[ticket.category as TicketCategory] || 'bg-slate-50 text-slate-600 border-slate-100/50'}`}>
+                            {ticket.category === 'Power' && <Zap size={12} className="fill-amber-500 text-amber-500" />}
+                            {ticket.category === 'Water Supply' && <Droplets size={12} className="fill-sky-500 text-sky-500" />}
+                            {ticket.category === 'Facility' && <Building2 size={12} className="fill-indigo-500 text-indigo-500" />}
                             {ticket.category}
                           </span>
-                          {ticket.channel && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-tight ${getChannelClass(ticket.channel)}`}>
-                              {ticket.channel}
-                            </span>
-                          )}
                         </div>
                       </td>
                       <td className="px-3 py-4 border-b border-slate-100">
                         <p className="text-sm font-black text-slate-700 text-left truncate max-w-[320px]">
                           {ticket.companies?.name || ticket.company_name}
                         </p>
-                        <div className="flex flex-col gap-0.5 mt-1">
-                          <p className="text-xs text-slate-400 font-medium flex items-center gap-1">
-                            <MapPin size={12} /> {ticket.area || '-'}{ticket.location_text ? ` • ${ticket.location_text}` : ''}
+                        <div className="flex flex-col gap-1 mt-1.5">
+                          <p className="text-xs text-slate-600 font-bold flex items-center gap-1.5">
+                            <MapPin size={14} className="text-slate-500" /> {ticket.area || '-'}{ticket.location_text ? ` • ${ticket.location_text}` : ''}
                           </p>
-                          <p className="text-xs text-slate-500 font-bold flex items-center gap-1">
-                            <User size={12} className="text-slate-300" /> {ticket.contact_name || 'N/A'}
-                            {ticket.contact_phone ? <span className="text-slate-300">• {ticket.contact_phone}</span> : null}
-                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              <User size={14} className="text-slate-400 shrink-0" /> 
+                              <span className="text-xs text-slate-700 font-black truncate">{ticket.contact_name || 'N/A'}</span>
+                              {ticket.contact_phone ? <span className="text-blue-600 font-black text-[11px] bg-blue-50 px-1.5 py-0.5 rounded ml-1 truncate">📞 {ticket.contact_phone}</span> : null}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="px-3 py-4 border-b border-slate-100">
                         <div className="flex flex-col gap-2">
-                          <span className={`inline-flex w-fit px-2.5 py-1 rounded-full text-xs font-black border ${statusColors[ticket.status as TicketStatus]}`}>
+                          <span className={`inline-flex w-fit px-3 py-1 rounded-lg text-xs font-black uppercase tracking-widest border ${statusColors[ticket.status as TicketStatus]}`}>
                             {ticket.status}
                           </span>
                           <div className="flex items-center gap-2">
@@ -1031,16 +1205,66 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                         </div>
                       </td>
                       <td className="px-3 py-4 border-b border-slate-100">
-                        {ticket.assignee ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-black text-primary border border-primary/20">
-                              {ticket.assignee.charAt(0)}
+                        <div className="space-y-3">
+                          {/* Response */}
+                          {(() => {
+                            const isCustomerOpened = (ticket as any).creator?.role === 'customer';
+                            const responder = (ticket as any).responder || (!isCustomerOpened ? (ticket as any).creator : null);
+                            const hasPermission = profile && (role === 'admin' || role === 'crm' || role === 'technician');
+                            
+                            return (
+                              <div className={`flex items-center gap-2 ${!responder && hasPermission ? 'cursor-pointer hover:bg-slate-50/50 rounded-md transition-colors' : ''}`}
+                                onClick={(e) => {
+                                  if (hasPermission && (!responder || responder.emp_id === profile.emp_id)) {
+                                    e.stopPropagation();
+                                    handleClaimToggle(ticket);
+                                  }
+                                }}
+                              >
+                                <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-sm flex items-center justify-center">
+                                  {responder?.emp_id ? (
+                                    <img src={getAvatarUrl(responder.emp_id)!} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <User size={14} className="text-slate-400" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none mb-1">Response</p>
+                                  {responder ? (
+                                    <p className="text-xs font-black text-slate-800 truncate">{responder.full_name || 'System'}</p>
+                                  ) : (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[10px] font-bold text-amber-600 italic">Unassigned</span>
+                                      {hasPermission && (
+                                        <span className="text-[9px] font-black text-white bg-amber-500 px-1.5 py-0.5 rounded uppercase animate-pulse">Claim</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                {responder?.emp_id === profile?.emp_id && isCustomerOpened && (
+                                  <XCircle size={14} className="text-red-400 hover:text-red-600 ml-1 cursor-pointer shrink-0" 
+                                    onClick={(e) => { e.stopPropagation(); handleClaimToggle(ticket); }} 
+                                  />
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          {/* Team/Assignee */}
+                          <div className="flex items-center gap-2 pt-2 border-t border-slate-50">
+                            <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 border border-indigo-100 shrink-0 shadow-sm">
+                              {ticket.assignee ? ticket.assignee.charAt(0) : '?'}
                             </div>
-                            <span className="text-sm font-black text-slate-600">{ticket.assignee}</span>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-wider leading-none mb-1">Team</p>
+                              {ticket.assignee ? (
+                                <p className="text-xs font-black text-slate-700 truncate">{ticket.assignee}</p>
+                              ) : (
+                                <span className="text-[10px] font-bold text-slate-400 italic">Not Assigned</span>
+                              )}
+                            </div>
                           </div>
-                        ) : (
-                          <span className="inline-flex px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-xs font-black">Unassigned</span>
-                        )}
+                        </div>
                       </td>
                       <td className="px-3 py-4 border-b border-slate-100">
                         <div className="flex flex-col gap-1">
@@ -1197,43 +1421,100 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
 
             <div className="p-5 overflow-y-auto">
               <form className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid gap-3 ${allowedCategories.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   {allowedCategories.map((item) => (
                     <button
                       key={item}
                       type="button"
                       onClick={() => setCategory(item)}
-                      className={`p-4 rounded-xl border-2 text-left transition-all ${category === item ? 'border-primary bg-blue-50 text-primary' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                      className={`p-4 rounded-xl border-2 text-left transition-all ${category === item ? 'border-primary bg-blue-50 text-primary shadow-sm' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
                     >
                       <p className="font-black text-sm">{item}</p>
-                      <p className="text-[11px] mt-1">{item === 'Power' ? 'Internal only' : item === 'Water Supply' ? 'น้ำประปา / แรงดันน้ำ' : 'Facility / Safety / Waste water'}</p>
+                      <p className="text-[11px] mt-1 opacity-70">{item === 'Power' ? 'Internal only' : item === 'Water Supply' ? 'น้ำประปา / แรงดันน้ำ' : 'Facility / Safety / Waste water'}</p>
                     </button>
                   ))}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FieldWithError label="ชื่อบริษัท / โรงงาน" error={formErrors.selectedCompanyId}>
-                    {role === 'customer' ? (
-                      <div className="w-full form-field bg-slate-50 text-slate-500 cursor-not-allowed">
-                        {companies.find(c => c.id === selectedCompanyId)?.name || 'กำลังดึงข้อมูลบริษัท...'}
+                <Field label="ปัญหาย่อย (Sub-category)">
+                  <select value={subCategory} onChange={(e) => setSubCategory(e.target.value)} className="w-full form-field h-[42px] font-bold text-slate-800">
+                    {getSubCategoryOptions().map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </Field>
+
+                {role !== 'customer' && (
+                  <ChannelSelector value={formChannel} onChange={setFormChannel} />
+                )}
+
+                <FieldWithError label="ชื่อบริษัท / โรงงาน (เลือกโซนก่อนเพื่อหาได้ง่ายขึ้น)" error={formErrors.selectedCompanyId}>
+                  {role === 'customer' ? (
+                    <div className="w-full form-field bg-slate-50 text-slate-500 cursor-not-allowed">
+                      {companies.find(c => c.id === selectedCompanyId)?.name || 'กำลังดึงข้อมูลบริษัท...'}
+                    </div>
+                  ) : (
+                    <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                      <div className="flex flex-wrap gap-1.5">
+                        {zones.map(zone => (
+                          <button
+                            key={zone}
+                            type="button"
+                            onClick={() => setZoneFilter(zone)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                              zoneFilter === zone 
+                              ? 'bg-indigo-600 text-white shadow-md' 
+                              : 'bg-white text-slate-500 hover:text-slate-700 border border-slate-200'
+                            }`}
+                          >
+                            {zone}
+                          </button>
+                        ))}
                       </div>
-                    ) : (
-                      <select
-                        value={selectedCompanyId}
-                        onChange={(e) => setSelectedCompanyId(e.target.value)}
-                        className={`w-full form-field ${formErrors.selectedCompanyId ? 'border-red-400 bg-red-50' : ''}`}
-                      >
-                        <option value="">เลือกบริษัท</option>
-                        {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    )}
-                  </FieldWithError>
-                  <Field label="ปัญหาย่อย">
-                    <select value={subCategory} onChange={(e) => setSubCategory(e.target.value)} className="w-full form-field">
-                      {getSubCategoryOptions().map((option) => <option key={option} value={option}>{option}</option>)}
-                    </select>
-                  </Field>
-                </div>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input
+                          type="text"
+                          placeholder="ค้นหาชื่อบริษัท / โรงงาน..."
+                          value={companySearch}
+                          onChange={(e) => setCompanySearch(e.target.value)}
+                          className="w-full form-field pl-9 text-sm border-slate-200 focus:bg-white transition-colors"
+                        />
+                      </div>
+                      <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl divide-y bg-white shadow-inner">
+                        {searchableCompanies.length > 0 ? (
+                          searchableCompanies.map(c => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => setSelectedCompanyId(c.id)}
+                              className={`w-full text-left px-4 py-3 hover:bg-indigo-50 transition-all flex items-center justify-between border-l-4 ${
+                                selectedCompanyId === c.id 
+                                ? 'bg-indigo-50 border-indigo-500' 
+                                : 'border-transparent'
+                              }`}
+                            >
+                              <div>
+                                <p className={`text-sm font-black transition-colors ${selectedCompanyId === c.id ? 'text-indigo-900' : 'text-slate-800'}`}>
+                                  {c.name}
+                                </p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide mt-0.5">
+                                  {c.area || 'ไม่ระบุโซน'}
+                                </p>
+                              </div>
+                              {selectedCompanyId === c.id && (
+                                <div className="bg-indigo-500 rounded-full p-1 shadow-sm">
+                                  <Check size={10} className="text-white" strokeWidth={4} />
+                                </div>
+                              )}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="p-6 text-center">
+                            <p className="text-xs text-slate-400 font-medium">ไม่พบรายชื่อบริษัทในเงื่อนไขที่เลือก</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </FieldWithError>
 
                 {category === 'Power' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1362,10 +1643,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                   </Field>
                 )}
 
-                {/* ── ช่องทางการรับเรื่อง (แสดงเฉพาะ staff) ── */}
-                {role !== 'customer' && (
-                  <ChannelSelector value={formChannel} onChange={setFormChannel} />
-                )}
+
 
                 {/* ── ชื่อ + เบอร์ติดต่อ: แสดงทุก category ── */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1398,20 +1676,20 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                   />
                 </FieldWithError>
 
-                <Field label="ตำแหน่ง / พื้นที่">
+                <FieldWithError label="ตำแหน่ง / พื้นที่ (โปรดระบุให้ชัดเจน)" error={formErrors.locationDetail}>
                   <input 
-                    className="w-full form-field" 
-                    placeholder="เช่น หน้าอาคารผลิต D2, IP7 Phase 5" 
+                    className={`w-full form-field ${formErrors.locationDetail ? 'border-red-400 bg-red-50' : ''}`} 
+                    placeholder="ระบุจุดเกิดเหตุให้ชัดเจน เช่น หน้าอาคารผลิต D2, IP7 Phase 5" 
                     value={locationDetail}
                     onChange={(e) => setLocationDetail(e.target.value)}
                   />
-                </Field>
+                </FieldWithError>
 
                 <input 
                   type="file" 
                   ref={fileInputRef} 
                   className="hidden" 
-                  accept="image/*" 
+                  accept="image/*,video/*" 
                   multiple 
                   onChange={handleFileChange}
                 />
@@ -1419,8 +1697,19 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                 {previews.length > 0 && (
                   <div className="grid grid-cols-4 gap-2 mb-4">
                     {previews.map((url, i) => (
-                      <div key={url} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 group">
-                        <img src={url} alt="Preview" className="w-full h-full object-cover" />
+                      <div key={url} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 group bg-slate-50 flex items-center justify-center">
+                        {selectedFiles[i]?.type.startsWith('video/') ? (
+                          <>
+                            <video src={url} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition-colors">
+                              <div className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center shadow-sm">
+                                <Play size={16} className="text-slate-800 fill-slate-800 ml-0.5" />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <img src={url} alt="Preview" className="w-full h-full object-cover" />
+                        )}
                         <button 
                           type="button"
                           onClick={() => removeFile(i)}
@@ -1549,6 +1838,65 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
           </div>
         </div>
       )}
+
+      {/* ── Confirm Claim / Unclaim Modal ── */}
+      {confirmClaim && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setConfirmClaim(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className={`p-5 border-b ${confirmClaim.type === 'claim' ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${confirmClaim.type === 'claim' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}`}>
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-base leading-tight">
+                    {confirmClaim.type === 'claim' ? 'ยืนยันการรับเคส' : 'ยืนยันการยกเลิก'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {confirmClaim.type === 'claim' ? 'คุณจะเป็นผู้รับผิดชอบ Response เคสนี้' : 'คุณต้องการยกเลิกการรับเคสนี้'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            {/* Body */}
+            <div className="p-5">
+              <p className="text-sm text-slate-600">
+                {confirmClaim.type === 'claim'
+                  ? 'เมื่อกด "Confirm" คุณจะถูกบันทึกเป็นผู้ Response เคสนี้ และสถานะจะเปลี่ยนเป็น In Progress'
+                  : 'เมื่อกด "Confirm" ระบบจะนำชื่อคุณออกจาก Response เคสนี้'}
+              </p>
+            </div>
+            {/* Actions */}
+            <div className="px-5 pb-5 flex gap-3">
+              <button
+                onClick={() => setConfirmClaim(null)}
+                className="flex-1 py-2.5 border-2 border-slate-200 rounded-xl text-sm font-black text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={executeClaimToggle}
+                disabled={submitting}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-black text-white transition-all shadow-md disabled:opacity-60 flex items-center justify-center gap-2 ${
+                  confirmClaim.type === 'claim'
+                    ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-200'
+                    : 'bg-red-500 hover:bg-red-600 shadow-red-200'
+                }`}
+              >
+                {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1600,7 +1948,7 @@ function ChannelSelector({ value, onChange }: { value: string; onChange: (v: str
   return (
     <div className="space-y-2">
       <span className="text-xs font-black text-slate-600 uppercase block">ช่องทางที่รับเรื่อง</span>
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {CHANNELS.map((ch) => {
           const active = value === ch.value;
           return (
@@ -1608,9 +1956,9 @@ function ChannelSelector({ value, onChange }: { value: string; onChange: (v: str
               key={ch.value}
               type="button"
               onClick={() => onChange(ch.value)}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black border-2 transition-all duration-150
+              className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-black border-2 transition-all duration-150
                 ${active
-                  ? 'bg-primary text-white border-primary shadow-md scale-105'
+                  ? 'bg-primary text-white border-primary shadow-md'
                   : 'bg-white text-slate-600 border-slate-200 hover:border-primary hover:text-primary'
                 }`}
             >

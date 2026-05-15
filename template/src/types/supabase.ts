@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      categories: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
       companies: {
         Row: {
           area: string
@@ -77,6 +98,41 @@ export type Database = {
         }
         Relationships: []
       }
+      quick_templates: {
+        Row: {
+          category_id: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          target_status: string | null
+          template_text: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          target_status?: string | null
+          template_text: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          target_status?: string | null
+          template_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quick_templates_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       response_teams: {
         Row: {
           area: string | null
@@ -87,6 +143,7 @@ export type Database = {
           specialty: string | null
           status: string | null
           updated_at: string | null
+          is_active: boolean | null
         }
         Insert: {
           area?: string | null
@@ -97,6 +154,7 @@ export type Database = {
           specialty?: string | null
           status?: string | null
           updated_at?: string | null
+          is_active?: boolean | null
         }
         Update: {
           area?: string | null
@@ -107,8 +165,41 @@ export type Database = {
           specialty?: string | null
           status?: string | null
           updated_at?: string | null
+          is_active?: boolean | null
         }
         Relationships: []
+      }
+      sub_categories: {
+        Row: {
+          category_id: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sub_categories_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ticket_affected_companies: {
         Row: {
@@ -140,27 +231,54 @@ export type Database = {
           },
         ]
       }
+      ticket_counters: {
+        Row: {
+          last_value: number
+          ticket_date: string
+        }
+        Insert: {
+          last_value?: number
+          ticket_date: string
+        }
+        Update: {
+          last_value?: number
+          ticket_date?: string
+        }
+        Relationships: []
+      }
       ticket_feedback: {
         Row: {
           comment: string | null
+          fix_quality_comment: string | null
+          fix_quality_score: number | null
           id: string
           score: number
+          service_quality_comment: string | null
+          service_quality_score: number | null
           submitted_at: string | null
           submitted_by: string | null
           ticket_id: string
         }
         Insert: {
           comment?: string | null
+          fix_quality_comment?: string | null
+          fix_quality_score?: number | null
           id?: string
           score: number
+          service_quality_comment?: string | null
+          service_quality_score?: number | null
           submitted_at?: string | null
           submitted_by?: string | null
           ticket_id: string
         }
         Update: {
           comment?: string | null
+          fix_quality_comment?: string | null
+          fix_quality_score?: number | null
           id?: string
           score?: number
+          service_quality_comment?: string | null
+          service_quality_score?: number | null
           submitted_at?: string | null
           submitted_by?: string | null
           ticket_id?: string
@@ -231,6 +349,7 @@ export type Database = {
           assignee: string | null
           auto_close_at: string | null
           category: string
+          category_id: string | null
           channel: string | null
           company_id: string | null
           company_name: string | null
@@ -247,9 +366,12 @@ export type Database = {
           location_text: string | null
           priority: string
           resolved_at: string | null
+          resolved_crm_at: string | null
+          responder_id: string | null
           sla_due_at: string | null
           status: string
           sub_category: string | null
+          sub_category_id: string | null
           type: string
         }
         Insert: {
@@ -257,6 +379,7 @@ export type Database = {
           assignee?: string | null
           auto_close_at?: string | null
           category: string
+          category_id?: string | null
           channel?: string | null
           company_id?: string | null
           company_name?: string | null
@@ -273,9 +396,11 @@ export type Database = {
           location_text?: string | null
           priority?: string
           resolved_at?: string | null
+          resolved_crm_at?: string | null
           sla_due_at?: string | null
           status?: string
           sub_category?: string | null
+          sub_category_id?: string | null
           type: string
         }
         Update: {
@@ -283,6 +408,7 @@ export type Database = {
           assignee?: string | null
           auto_close_at?: string | null
           category?: string
+          category_id?: string | null
           channel?: string | null
           company_id?: string | null
           company_name?: string | null
@@ -299,17 +425,33 @@ export type Database = {
           location_text?: string | null
           priority?: string
           resolved_at?: string | null
+          resolved_crm_at?: string | null
           sla_due_at?: string | null
           status?: string
           sub_category?: string | null
+          sub_category_id?: string | null
           type?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tickets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tickets_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_sub_category_id_fkey"
+            columns: ["sub_category_id"]
+            isOneToOne: false
+            referencedRelation: "sub_categories"
             referencedColumns: ["id"]
           },
         ]
@@ -318,7 +460,7 @@ export type Database = {
         Row: {
           company_id: string | null
           created_at: string | null
-          department: string | null
+          department: string[] | null
           email: string | null
           emp_id: string | null
           full_name: string | null
@@ -330,7 +472,7 @@ export type Database = {
         Insert: {
           company_id?: string | null
           created_at?: string | null
-          department?: string | null
+          department?: string[] | null
           email?: string | null
           emp_id?: string | null
           full_name?: string | null
@@ -342,7 +484,7 @@ export type Database = {
         Update: {
           company_id?: string | null
           created_at?: string | null
-          department?: string | null
+          department?: string[] | null
           email?: string | null
           emp_id?: string | null
           full_name?: string | null

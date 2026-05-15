@@ -1,7 +1,8 @@
 import React from 'react';
-import { Calendar, Clock, Download, PieChart, ShieldCheck, TrendingUp, Loader2, Star } from 'lucide-react';
+import { Calendar, Clock, Download, PieChart, ShieldCheck, TrendingUp, Loader2, Star, Zap, Droplets, Building2, User } from 'lucide-react';
 import { Role } from '../App';
-import { api, Ticket } from '../lib/api';
+import { api, Ticket, getAvatarUrl } from '../lib/api';
+import { categoryColors, TicketCategory } from '../data';
 
 interface DashboardProps {
   role: Role;
@@ -133,17 +134,19 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
   const stats = React.useMemo(() => {
     const open = tickets.filter(t => t.status === 'Open').length;
     const inProgress = tickets.filter(t => t.status === 'In Progress').length;
-    const resolved = tickets.filter(t => t.status === 'Resolved').length;
+    const resolved = tickets.filter(t => t.status === 'Resolved (Tech)' || t.status === 'Resolved (CRM)').length;
     const closed = tickets.filter(t => t.status === 'Closed').length;
     const allFeedback = tickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
-    const avgCsat = allFeedback.length > 0 ? (allFeedback.reduce((acc, f) => acc + f.score, 0) / allFeedback.length).toFixed(1) : '0.0';
+    const avgFix = allFeedback.length > 0 ? (allFeedback.reduce((acc, f) => acc + (f.fix_quality_score || f.score), 0) / allFeedback.length).toFixed(1) : '0.0';
+    const avgService = allFeedback.length > 0 ? (allFeedback.reduce((acc, f) => acc + (f.service_quality_score || f.score), 0) / allFeedback.length).toFixed(1) : '0.0';
 
     return [
       { label: lang === 'TH' ? 'เคสเปิดใหม่ (Open)' : 'Open Tickets', value: open, tone: 'bg-red-50 text-red-700', icon: Calendar },
       { label: lang === 'TH' ? 'กำลังดำเนินการ (In Progress)' : 'In Progress', value: inProgress, tone: 'bg-orange-50 text-orange-700', icon: Clock },
       { label: lang === 'TH' ? 'รอตรวจรับ (Resolved)' : 'Resolved (Awaiting)', value: resolved, tone: 'bg-emerald-50 text-emerald-700', icon: ShieldCheck },
       { label: lang === 'TH' ? 'ปิดงานแล้ว (Closed)' : 'Closed Tickets', value: closed, tone: 'bg-slate-100 text-slate-700', icon: PieChart },
-      { label: lang === 'TH' ? 'ความพึงพอใจเฉลี่ย' : 'Avg. CSAT Score', value: avgCsat, tone: 'bg-amber-50 text-amber-700', icon: Star },
+      { label: lang === 'TH' ? 'Fix Quality' : 'Avg. Fix Quality', value: avgFix, tone: 'bg-amber-50 text-amber-700', icon: Star },
+      { label: lang === 'TH' ? 'Service Quality' : 'Avg. Service Quality', value: avgService, tone: 'bg-blue-50 text-blue-700', icon: Star },
     ];
   }, [tickets, lang]);
 
@@ -195,7 +198,7 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
     }));
 
     // 4. SLA Compliance (Example Logic: Resolved/Closed on time)
-    const onTime = tickets.filter(t => t.status === 'Closed' || t.status === 'Resolved').length; // Simplified for demo
+    const onTime = tickets.filter(t => t.status === 'Closed' || t.status === 'Resolved (Tech)' || t.status === 'Resolved (CRM)').length;
     const slaSegments = [
       { label: 'On-time', value: onTime, color: '#10b981' },
       { label: 'Delayed', value: Math.max(0, tickets.length - onTime - 5), color: '#f59e0b' }, // Mocking some delay
@@ -244,7 +247,7 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
   }, [tickets]);
 
   const criticalTickets = tickets.filter((ticket) => ticket.priority === 'Critical' && ticket.status !== 'Closed');
-  const resolvedTickets = tickets.filter((ticket) => ticket.status === 'Resolved');
+  const resolvedTickets = tickets.filter((ticket) => ticket.status === 'Resolved (Tech)' || ticket.status === 'Resolved (CRM)');
 
   if (role === 'customer') {
     return (
@@ -292,7 +295,7 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
         </div>
       </section>
 
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {stats.map((card) => {
           const Icon = card.icon;
           return (
@@ -332,17 +335,42 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
               <p className="p-10 text-center text-slate-400 text-sm">{text.noCritical}</p>
             ) : criticalTickets.map((ticket) => (
               <button key={ticket.id} onClick={() => onSelectTicket(ticket.id)} className="w-full p-5 text-left hover:bg-slate-50 transition-colors">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs font-black text-red-700">{ticket.id}</span>
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-red-50 text-red-700">{ticket.category}</span>
+                  <div className="flex items-center gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-mono text-xs font-black text-red-700">{ticket.id}</span>
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-black rounded-lg uppercase border ${categoryColors[ticket.category as TicketCategory] || 'bg-slate-50 text-slate-600 border-slate-100/50'}`}>
+                          {ticket.category === 'Power' && <Zap size={10} className="fill-amber-500 text-amber-500" />}
+                          {ticket.category === 'Water Supply' && <Droplets size={10} className="fill-sky-500 text-sky-500" />}
+                          {ticket.category === 'Facility' && <Building2 size={10} className="fill-indigo-500 text-indigo-500" />}
+                          {ticket.category}
+                        </span>
+                      </div>
+                      <h4 className="font-black text-slate-900 truncate leading-tight mb-1">{ticket.sub_category}</h4>
+                      <p className="text-xs text-slate-500 truncate">{ticket.companies?.name || ticket.company_name} • {ticket.area} • {ticket.assignee || text.notAssigned}</p>
+                      
+                      {(ticket as any).creator && (
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-50">
+                          <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-50 border border-slate-200 shrink-0">
+                            {(ticket as any).creator.emp_id ? (
+                              <img src={getAvatarUrl((ticket as any).creator.emp_id)!} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                <User size={12} />
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-black text-slate-700 truncate">{(ticket as any).creator.full_name}</span>
+                        </div>
+                      )}
                     </div>
-                    <h4 className="font-black text-slate-900 truncate">{ticket.sub_category}</h4>
-                    <p className="text-xs text-slate-500 mt-1 truncate">{ticket.companies?.name || ticket.company_name} • {ticket.area} • {ticket.assignee || text.notAssigned}</p>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Created At</span>
+                      <span className="text-xs font-black text-slate-900 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                        {new Date(ticket.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs font-black text-slate-500 whitespace-nowrap">{new Date(ticket.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
               </button>
             ))}
           </div>
@@ -386,11 +414,11 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
                 <Star className="text-amber-400 fill-amber-400" size={20} />
                 Customer Voice Feed
               </h3>
-              <p className="text-xs text-slate-500 mt-1">Real-time feedback from our customers</p>
+              <p className="text-xs text-slate-600 font-bold mt-1">Real-time feedback from our customers</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Overall CSAT</p>
+                <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Overall CSAT</p>
                 <div className="flex items-center gap-2">
                   <p className="text-2xl font-black text-emerald-600">
                     {(() => {
@@ -421,16 +449,29 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-[10px]">
                           {ticket.id.split('-').pop()?.slice(-2)}
                         </div>
-                        <span className="font-mono text-[10px] font-black text-slate-400 group-hover:text-primary transition-colors">{ticket.id}</span>
+                        <span className="font-mono text-xs font-black text-slate-500 group-hover:text-primary transition-colors">{ticket.id}</span>
                       </div>
-                      <div className="flex gap-0.5">
-                        {[...Array(5)].map((_, i) => (
-                          <Star key={i} size={12} className={i < fb.score ? "fill-amber-400 text-amber-400" : "text-slate-200"} />
-                        ))}
+                    </div>
+                    <div className="flex flex-col gap-1 mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-black text-slate-600 uppercase w-12">Repair</span>
+                        <div className="flex gap-0.5">
+                          {[...Array(5)].map((_, i) => (
+                            <Star key={i} size={10} className={i < (fb.fix_quality_score || fb.score) ? "fill-amber-400 text-amber-400" : "text-slate-200"} />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-black text-slate-600 uppercase w-12">Service</span>
+                        <div className="flex gap-0.5">
+                          {[...Array(5)].map((_, i) => (
+                            <Star key={i} size={10} className={i < (fb.service_quality_score || fb.score) ? "fill-blue-400 text-blue-400" : "text-slate-200"} />
+                          ))}
+                        </div>
                       </div>
                     </div>
                     <blockquote className="text-sm font-medium text-slate-700 leading-relaxed mb-4 italic">
-                      "{fb.comment || (fb.score >= 4 ? 'ยอดเยี่ยมมากครับ' : 'ขอบคุณครับ')}"
+                      "{fb.fix_quality_comment || fb.service_quality_comment || fb.comment || (fb.score >= 4 ? 'ยอดเยี่ยมมากครับ' : 'ขอบคุณครับ')}"
                     </blockquote>
                     <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-50">
                       <div className="min-w-0">

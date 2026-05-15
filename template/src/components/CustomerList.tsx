@@ -208,8 +208,8 @@ export function CustomerList() {
                 <th className="p-4 font-black">Company</th>
                 <th className="p-4 font-black">Area</th>
                 <th className="p-4 font-black">Contact</th>
-                <th className="p-4 font-black">Status</th>
-                <th className="p-4 font-black text-right">Action</th>
+                <th className="p-4 font-black text-sm">Status</th>
+                <th className="p-4 font-black text-sm text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -239,9 +239,9 @@ export function CustomerList() {
                     </td>
                     <td className="p-4">
                       {company.isRegistered ? (
-                        <span className="px-2 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded-md tracking-wide">Registered</span>
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold uppercase rounded-md tracking-wide">Registered</span>
                       ) : (
-                        <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[10px] font-bold uppercase rounded-md tracking-wide">Pending</span>
+                        <span className="px-2 py-1 bg-slate-100 text-slate-500 text-xs font-bold uppercase rounded-md tracking-wide">Pending</span>
                       )}
                     </td>
                     <td className="p-4 text-right">

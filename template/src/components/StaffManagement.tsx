@@ -26,7 +26,7 @@ const ROLE_OPTIONS = [
 function RoleBadge({ role }: { role: string }) {
   const opt = ROLE_OPTIONS.find(r => r.value === role) ?? ROLE_OPTIONS[3];
   return (
-    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${opt.badge}`}>
+    <span className={`px-2.5 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${opt.badge}`}>
       {opt.label}
     </span>
   );
@@ -189,8 +189,8 @@ export function StaffManagement() {
                     <p className="text-xs text-slate-500 truncate">{user.email}</p>
                     {user.department && (Array.isArray(user.department) ? user.department.length > 0 : !!user.department) && (
                       <div className="flex items-center gap-1 mt-1">
-                        <Building2 size={10} className="text-slate-400" />
-                        <p className="text-[10px] text-slate-500">
+                        <Building2 size={12} className="text-slate-400" />
+                        <p className="text-xs text-slate-500">
                           {Array.isArray(user.department) ? user.department.join(', ') : user.department}
                         </p>
                       </div>
@@ -241,12 +241,12 @@ export function StaffManagement() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50">
-                <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">พนักงาน</th>
-                <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">รหัส / แผนก</th>
-                <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">อีเมล</th>
-                <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">Role</th>
-                <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">สถานะ</th>
-                <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200 text-right">จัดการ</th>
+                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">พนักงาน</th>
+                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">รหัส / แผนก</th>
+                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">อีเมล</th>
+                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">Role</th>
+                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">สถานะ</th>
+                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200 text-right">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -282,8 +282,8 @@ export function StaffManagement() {
                     <p className="text-xs font-mono font-black text-slate-700">{user.emp_id || '—'}</p>
                     {user.department && (Array.isArray(user.department) ? user.department.length > 0 : !!user.department) && (
                       <div className="flex items-center gap-1 mt-0.5">
-                        <Building2 size={10} className="text-slate-400" />
-                        <p className="text-[10px] text-slate-500">
+                        <Building2 size={12} className="text-slate-400" />
+                        <p className="text-xs text-slate-500">
                           {Array.isArray(user.department) ? user.department.join(', ') : user.department}
                         </p>
                       </div>
@@ -291,7 +291,7 @@ export function StaffManagement() {
                   </td>
 
                   {/* Email */}
-                  <td className="px-5 py-3.5 text-xs text-slate-600 max-w-[180px]">
+                  <td className="px-5 py-3.5 text-sm text-slate-600 max-w-[180px]">
                     <span className="truncate block">{user.email}</span>
                   </td>
 
@@ -315,12 +315,12 @@ export function StaffManagement() {
 
                   {/* Status */}
                   <td className="px-5 py-3.5">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black flex items-center gap-1 w-fit border ${
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1 w-fit border ${
                       user.status === 'rejected'
                         ? 'bg-red-50 text-red-700 border-red-200'
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     }`}>
-                      <CheckCircle2 size={11} />
+                      <CheckCircle2 size={13} />
                       {user.status === 'rejected' ? 'ระงับ' : 'ใช้งานได้'}
                     </span>
                   </td>
@@ -332,38 +332,38 @@ export function StaffManagement() {
                         <button
                           onClick={() => handleSaveRole(user.id)}
                           disabled={savingId === user.id}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-primary text-white rounded-lg text-[11px] font-black hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-primary text-white rounded-lg text-xs font-black hover:bg-primary/90 disabled:opacity-50 transition-colors"
                         >
-                          {savingId === user.id ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                          {savingId === user.id ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                           บันทึก
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-[11px] font-black hover:bg-slate-50 transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-black hover:bg-slate-50 transition-colors"
                         >
-                          <XCircle size={12} /> ยกเลิก
+                          <XCircle size={14} /> ยกเลิก
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-1.5 transition-opacity">
                         <button
                           onClick={() => { setEditingId(user.id); setEditRole(user.role); }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-[11px] font-black hover:bg-slate-50 transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-black hover:bg-slate-50 transition-colors"
                         >
-                          <Edit3 size={12} /> แก้ Role
+                          <Edit3 size={14} /> แก้ Role
                         </button>
                         <button
                           onClick={() => handleToggleStatus(user.id, user.status)}
-                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-colors ${
+                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-black border transition-colors ${
                             user.status === 'rejected'
                               ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
                               : 'border-red-200 text-red-600 hover:bg-red-50'
                           }`}
                         >
                           {user.status === 'rejected' ? (
-                            <><UserCheck size={12} /> เปิดใช้</>
+                            <><UserCheck size={14} /> เปิดใช้</>
                           ) : (
-                            <><UserX size={12} /> ระงับ</>
+                            <><UserX size={14} /> ระงับ</>
                           )}
                         </button>
                       </div>

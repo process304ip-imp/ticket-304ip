@@ -18,6 +18,8 @@ const CustomerList = lazy(() => import('./components/CustomerList').then((module
 const Team = lazy(() => import('./components/Team').then((module) => ({ default: module.Team })));
 const StaffManagement = lazy(() => import('./components/StaffManagement').then((module) => ({ default: module.StaffManagement })));
 const UserProfile = lazy(() => import('./components/UserProfile').then((module) => ({ default: module.UserProfile })));
+const MasterDataAdmin = lazy(() => import('./components/MasterDataAdmin'));
+const Leaderboard = lazy(() => import('./components/Leaderboard').then((module) => ({ default: module.Leaderboard })));
 
 export interface Notification {
   id: string;
@@ -206,6 +208,8 @@ export default function App() {
         {viewToShow === 'team' && <Team onAddNotification={addNotification} />}
         {viewToShow === 'staff' && <StaffManagement />}
         {viewToShow === 'profile' && <UserProfile />}
+        {viewToShow === 'master-data' && <MasterDataAdmin />}
+        {viewToShow === 'leaderboard' && <Leaderboard />}
       </Suspense>
       <PwaBanner />
     </Layout>

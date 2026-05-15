@@ -9,6 +9,12 @@ export interface CompanyWithStatus extends Company {
 }
 export type ResponseTeam = Database['public']['Tables']['response_teams']['Row'];
 
+export function getAvatarUrl(empId?: string | null) {
+  if (!empId) return null;
+  return `https://wms.advanceagro.net/WSVIS/api/Face/GetImage?CardID=${empId}`;
+}
+
+
 type TicketListOptions = {
   role?: string;
   profile?: {
@@ -51,7 +57,7 @@ export const api = {
     async list(options: TicketListOptions = {}) {
       const { data, error } = await supabase
         .from('tickets')
-        .select('*, companies!tickets_company_id_fkey(name, area), ticket_affected_companies(company_id), ticket_feedback(*), ticket_logs(timestamp)')
+        .select('*, companies!tickets_company_id_fkey(name, area), creator:user_profiles!tickets_created_by_fkey(full_name, emp_id, role), responder:user_profiles!tickets_responder_id_fkey(full_name, emp_id, role), ticket_affected_companies(company_id), ticket_feedback(*), ticket_logs(timestamp)')
         .order('created_at', { ascending: false });
       if (error) throw error;
       if (options.role === 'technician') {
@@ -90,7 +96,7 @@ export const api = {
     async get(id: string) {
       const { data, error } = await supabase
         .from('tickets')
-        .select('*, companies!tickets_company_id_fkey(name, area), ticket_affected_companies(company_id), ticket_logs(*), ticket_feedback(*)')
+        .select('*, companies!tickets_company_id_fkey(name, area), creator:user_profiles!tickets_created_by_fkey(full_name, emp_id, role), responder:user_profiles!tickets_responder_id_fkey(full_name, emp_id, role), ticket_affected_companies(company_id), ticket_logs(*, author_profile:user_profiles!ticket_logs_author_id_fkey(full_name, emp_id, role)), ticket_feedback(*)')
         .eq('id', id);
       if (error) throw error;
       return (data && data.length > 0) ? data[0] : null;
@@ -123,7 +129,16 @@ export const api = {
         
         fieldsToTrack.forEach(field => {
           if (updates[field] !== undefined && updates[field] !== currentTicket[field]) {
-            changes.push(`เปลี่ยน ${field} จาก "${currentTicket[field] || 'ว่าง'}" เป็น "${updates[field]}"`);
+            let fromVal = currentTicket[field];
+            let toVal = updates[field];
+            
+            // Handle field value display if needed
+            if (field === 'category_id' || field === 'sub_category_id') {
+              // We could fetch names here, but for now we'll just log the update
+              changes.push(`เปลี่ยน ${field.replace('_id', '')}`);
+            } else {
+              changes.push(`เปลี่ยน ${field} จาก "${fromVal || 'ว่าง'}" เป็น "${toVal}"`);
+            }
           }
         });
 
@@ -211,6 +226,60 @@ export const api = {
         .select();
       if (error) throw error;
       return (data && data.length > 0) ? data[0] : null;
+    },
+    async getLeaderboardData() {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select(`
+          assignee,
+          status,
+          ticket_feedback (
+            fix_quality_score,
+            service_quality_score,
+            score
+          )
+        `)
+        .not('assignee', 'is', null);
+      if (error) throw error;
+      return data;
+    },
+    async getIndividualLeaderboardData() {
+      // 1. Get all staff/admin/technician profiles
+      const { data: profiles, error: pError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .in('role', ['crm', 'admin', 'technician']);
+      if (pError) throw pError;
+
+      // 2. Get tickets and their feedback for staff scores
+      const { data: tickets, error: tError } = await supabase
+        .from('tickets')
+        .select(`
+          id,
+          created_by,
+          status,
+          ticket_feedback (score)
+        `);
+      if (tError) throw tError;
+
+      // 3. Get logs for technician activity
+      const { data: logs, error: lError } = await supabase
+        .from('ticket_logs')
+        .select('author_id, status_to')
+        .in('status_to', ['In Progress', 'Resolved', 'Resolved (Tech)']);
+      if (lError) throw lError;
+
+      return { profiles, tickets, logs };
+    },
+    async getRecentFeedback(limit = 5) {
+      const { data, error } = await supabase
+        .from('ticket_feedback')
+        .select('*, tickets(assignee, category, sub_category)')
+        .not('fix_quality_comment', 'is', null)
+        .order('submitted_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return data;
     },
     async assign(ticketId: string, teamName: string, actorRole: string, note?: string, actor?: { name: string; role: any; id?: string }) {
       const teams = await api.teams.list();
@@ -329,9 +398,23 @@ export const api = {
       const { data, error } = await supabase
         .from('response_teams')
         .select('*')
+        .eq('is_active', true)
         .order('name');
       if (error) throw error;
       return data as ResponseTeam[];
+    },
+    async listAll() {
+      const { data, error } = await supabase
+        .from('response_teams')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      return data as ResponseTeam[];
+    },
+    async create(team: any) {
+      const { data, error } = await supabase.from('response_teams').insert(team).select().single();
+      if (error) throw error;
+      return data as ResponseTeam;
     },
     async update(id: string, updates: Partial<ResponseTeam>) {
       const { data, error } = await supabase.from('response_teams').update(updates).eq('id', id).select().single();
@@ -389,6 +472,46 @@ export const api = {
           filter: `user_id=eq.${userId}`
         }, callback)
         .subscribe();
+    }
+  },
+  masterData: {
+    async listCategories() {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+    async listSubCategories(categoryId?: string) {
+      let query = supabase
+        .from('sub_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      
+      if (categoryId) {
+        query = query.eq('category_id', categoryId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    async listQuickTemplates(categoryId?: string) {
+      let query = supabase
+        .from('quick_templates')
+        .select('*, categories(name)')
+        .eq('is_active', true);
+      
+      if (categoryId) {
+        query = query.eq('category_id', categoryId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
     }
   }
 };

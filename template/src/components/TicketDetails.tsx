@@ -15,14 +15,21 @@ import {
   Send,
   Star,
   X,
-  Crosshair
+  Crosshair,
+  Video,
+  PlayCircle,
+  Search,
+  Zap,
+  Droplets,
+  Building2,
+  User
 } from 'lucide-react';
 import { MapContainer, Marker, TileLayer, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Notification } from '../App';
 import { api, Ticket, TicketLog, Company, ResponseTeam } from '../lib/api';
-import { statusColors } from '../data';
+import { statusColors, categoryColors, TicketCategory } from '../data';
 import { Loader2 } from 'lucide-react';
 import { Role } from '../App';
 import { useToast } from './Toast';
@@ -46,13 +53,21 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [teams, setTeams] = useState<ResponseTeam[]>([]);
+  const [quickTemplates, setQuickTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'details' | 'logs'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'details'>('logs');
+  const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [logText, setLogText] = useState('');
-  const [feedback, setFeedback] = useState({ score: 0, comment: '' });
+  const [feedback, setFeedback] = useState({ 
+    fixScore: 0, 
+    serviceScore: 0, 
+    fixComment: '', 
+    serviceComment: '' 
+  });
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [localLogs, setLocalLogs] = useState<TicketLog[]>([]);
   
   const [isUploading, setIsUploading] = useState(false);
@@ -66,14 +81,27 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
   const { toast, confirm } = useToast();
   const { user, profile } = useAuth();
 
+  const isVideo = (url: string) => {
+    if (!url) return false;
+    const videoExts = ['.mp4', '.webm', '.ogg', '.mov', '.quicktime'];
+    return videoExts.some(ext => url.toLowerCase().split('?')[0].endsWith(ext)) || url.includes('/video');
+  };
+
+  const getAvatarUrl = (emp_id?: string | null) => {
+    if (!emp_id) return null;
+    return `https://wms.advanceagro.net/WSVIS/api/Face/GetImage?CardID=${emp_id}`;
+  };
+
+
   const fetchData = async () => {
     if (!ticketId) return;
     setLoading(true);
     try {
-      const [tData, cData, teamsData] = await Promise.all([
+      const [tData, cData, teamsData, templatesData] = await Promise.all([
         api.tickets.get(ticketId),
         api.companies.list(),
-        api.teams.list()
+        api.teams.list(),
+        api.masterData.listQuickTemplates()
       ]);
       setTicket(tData as any);
       // Sort logs newest-first (safe against null / invalid dates)
@@ -87,6 +115,12 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
       setLocalLogs(logs as any);
       setCompanies(cData);
       setTeams(teamsData);
+      const filteredTemplates = (templatesData as any[]).filter(t => {
+        const matchesId = tData.category_id && t.category_id === tData.category_id;
+        const matchesName = tData.category && t.categories?.name === tData.category;
+        return matchesId || matchesName;
+      });
+      setQuickTemplates(filteredTemplates);
     } catch (error) {
       console.error('Error fetching ticket details:', error);
       onAddNotification('Error', 'ไม่สามารถดึงข้อมูล Ticket ได้', 'system');
@@ -121,8 +155,9 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
     if (!skipConfirm) {
       const actionLabel: Record<string, string> = {
         'In Progress': 'รับงาน / Check-in',
-        'Resolved': 'Mark Resolved',
-        'Closed': 'ปิดงาน',
+        'Resolved (Tech)': 'Mark Resolved (Tech)',
+        'Resolved (CRM)': 'Confirm Resolve (CRM)',
+        'Closed': 'ปิดงานและบันทึก Feedback',
       };
       const ok = await confirm({
         title: `ยืนยัน: ${actionLabel[newStatus] || newStatus}`,
@@ -211,14 +246,25 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
     if (!logText.trim() || !ticket) return;
     try {
       setIsUploading(true);
+      setUploadProgress(0);
       let mediaUrls: string[] = [];
 
       if (attachedFiles.length > 0) {
         const options = { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true };
+        let count = 0;
         for (const file of attachedFiles) {
-          const compressedFile = await imageCompression(file, options);
-          const url = await api.storage.uploadAttachment(ticket.id, compressedFile);
+          let fileToUpload = file;
+          // Only compress images
+          if (file.type.startsWith('image/')) {
+            fileToUpload = await imageCompression(file, options);
+          }
+          
+          // Progress simulation for small files or real for large if API supports it
+          // For now we just increment based on file count
+          const url = await api.storage.uploadAttachment(ticket.id, fileToUpload);
           mediaUrls.push(url);
+          count++;
+          setUploadProgress((count / attachedFiles.length) * 100);
         }
       }
 
@@ -245,21 +291,25 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
       onAddNotification('Error', 'ไม่สามารถบันทึก Log ได้', 'system');
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
   const submitFeedback = async () => {
-    if (!feedback.score || !ticket) {
-      toast.warning('กรุณาให้คะแนนก่อน', 'กรุณาเลือกดาวก่อนส่ง Feedback');
+    if (!feedback.fixScore || !feedback.serviceScore || !ticket) {
+      toast.warning('กรุณาให้คะแนนให้ครบ', 'กรุณาให้คะแนนทั้งคุณภาพการซ่อมและการบริการ');
       return;
     }
     try {
       setLoading(true);
-      // 1. Insert Feedback while ticket is still Resolved for RLS validation
+      // 1. Insert Feedback
       await api.tickets.addFeedback({
         ticket_id: ticket.id,
-        score: feedback.score,
-        comment: feedback.comment || '',
+        score: Math.round((feedback.fixScore + feedback.serviceScore) / 2),
+        fix_quality_score: feedback.fixScore,
+        service_quality_score: feedback.serviceScore,
+        fix_quality_comment: feedback.fixComment || '',
+        service_quality_comment: feedback.serviceComment || '',
         submitted_by: user?.id || null
       });
 
@@ -269,17 +319,17 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
       // 3. Add Log
       await api.tickets.addLog({
         ticket_id: ticket.id,
-        message: `ลูกค้าให้ Feedback (${feedback.score} ดาว): ${feedback.comment || '-'}`,
-        author_name: profile?.full_name || 'Customer',
+        message: `ปิดงานพร้อม Feedback: คุณภาพการซ่อม ${feedback.fixScore}/5, การบริการ ${feedback.serviceScore}/5`,
+        author_name: profile?.full_name || 'CRM Staff',
         author_id: user?.id || null,
-        author_role: 'customer',
-        status_from: 'Resolved',
+        author_role: 'crm',
+        status_from: 'Resolved (CRM)',
         status_to: 'Closed'
       });
 
       setIsFeedbackModalOpen(false);
       toast.success('ขอบคุณสำหรับ Feedback!', 'ปิดงานเรียบร้อยแล้ว');
-      onAddNotification('ปิดงานสำเร็จ', 'ขอบคุณสำหรับ Feedback ครับ', 'system');
+      onAddNotification('ปิดงานสำเร็จ', 'ระบบบันทึก Feedback และปิดงานเรียบร้อย', 'system');
       fetchData();
     } catch (error) {
       console.error('Feedback error:', error);
@@ -315,8 +365,15 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="font-mono text-xs font-black text-primary">{ticket.id}</span>
-            <span className={`px-2 py-1 rounded-full text-[10px] font-black ${statusColors[ticket.status as any]}`}>{ticket.status}</span>
-            <span className="px-2 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-700">{ticket.category}</span>
+            <span className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-widest border ${statusColors[ticket.status as any]}`}>
+              {ticket.status}
+            </span>
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-widest border ${categoryColors[ticket.category as any] || 'bg-slate-50 text-slate-600 border-slate-100/50'}`}>
+              {ticket.category === 'Power' && <Zap size={12} className="fill-amber-500 text-amber-500" />}
+              {ticket.category === 'Water Supply' && <Droplets size={12} className="fill-sky-500 text-sky-500" />}
+              {ticket.category === 'Facility' && <Building2 size={12} className="fill-indigo-500 text-indigo-500" />}
+              {ticket.category}
+            </span>
           </div>
           <h2 className="text-2xl md:text-3xl font-black text-primary tracking-tight">{ticket.sub_category}</h2>
           <p className="text-sm text-slate-500 mt-2">{ticket.companies?.name || ticket.company_name} • {ticket.area} • {ticket.location_text}</p>
@@ -332,21 +389,37 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
           {/* Display Feedback Summary if closed */}
           {ticket.status === 'Closed' && (ticket as any).ticket_feedback && (ticket as any).ticket_feedback.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex flex-col md:flex-row md:items-center gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
-              <div className="flex items-center gap-2">
-                <div className="flex gap-0.5">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star 
-                      key={star} 
-                      size={18} 
-                      className={star <= (ticket as any).ticket_feedback[0].score ? 'fill-amber-400 text-amber-400' : 'text-slate-200'} 
-                    />
-                  ))}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-amber-700 uppercase">Repair</span>
+                  <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star 
+                        key={star} 
+                        size={12} 
+                        className={star <= (ticket as any).ticket_feedback[0].fix_quality_score ? 'fill-amber-400 text-amber-400' : 'text-slate-200'} 
+                      />
+                    ))}
+                  </div>
                 </div>
-                <span className="text-sm font-black text-amber-900">{(ticket as any).ticket_feedback[0].score}/5</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-amber-700 uppercase">Service</span>
+                  <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star 
+                        key={star} 
+                        size={12} 
+                        className={star <= (ticket as any).ticket_feedback[0].service_quality_score ? 'fill-amber-400 text-amber-400' : 'text-slate-200'} 
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
               <div className="flex-1">
-                <p className="text-xs font-black text-amber-700 uppercase tracking-tighter">Customer Satisfaction</p>
-                <p className="text-sm text-amber-900 font-medium italic">"{(ticket as any).ticket_feedback[0].comment || 'ไม่มีข้อความเพิ่มเติม'}"</p>
+                <p className="text-xs font-black text-amber-700 uppercase tracking-tighter">CRM Confirmation Feedback</p>
+                <p className="text-sm text-amber-900 font-medium italic">
+                  { (ticket as any).ticket_feedback[0].fix_quality_comment || (ticket as any).ticket_feedback[0].service_quality_comment || 'ไม่มีข้อความเพิ่มเติม' }
+                </p>
               </div>
             </div>
           )}
@@ -357,16 +430,25 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
               Add Log
             </button>
           )}
-          {isTechnician && ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
-            <button onClick={() => handleStatusUpdate('Resolved')} className="action-success">
+          
+          {isTechnician && ticket.status === 'In Progress' && (
+            <button onClick={() => handleStatusUpdate('Resolved (Tech)')} className="action-success">
               <CheckCircle size={16} />
-              Mark Resolved
+              Mark Resolved (Tech)
             </button>
           )}
-          {isCustomer && ticket.status === 'Resolved' && (
-            <button onClick={() => setIsFeedbackModalOpen(true)} className="action-primary bg-indigo-600 hover:bg-indigo-700">
+
+          {(role === 'crm' || role === 'admin') && ticket.status === 'Resolved (Tech)' && (
+            <button onClick={() => handleStatusUpdate('Resolved (CRM)')} className="action-primary bg-indigo-600 hover:bg-indigo-700">
+              <CheckCircle size={16} />
+              Confirm Resolve (CRM)
+            </button>
+          )}
+
+          {(role === 'crm' || role === 'admin') && ticket.status === 'Resolved (CRM)' && (
+            <button onClick={() => setIsFeedbackModalOpen(true)} className="action-success bg-emerald-600 hover:bg-emerald-700">
               <Star size={16} className="fill-white" />
-              ให้ Feedback และปิดงาน
+              ปิดงาน (Submit Feedback)
             </button>
           )}
         </div>
@@ -417,26 +499,18 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
         </section>
       )}
 
-      {ticket.status === 'Resolved' && (
+      {ticket.status === 'Resolved (CRM)' && (
         <section className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <h3 className="font-black text-emerald-800">งานถูก Resolved แล้ว</h3>
-            <p className="text-sm text-emerald-700 mt-1">รอ feedback ลูกค้า หรือระบบจะ auto-close ภายใน 48 ชั่วโมง: {safeDate(ticket.auto_close_at)}</p>
+            <h3 className="font-black text-emerald-800">งานถูก Confirm โดย CRM แล้ว</h3>
+            <p className="text-sm text-emerald-700 mt-1">ระบบจะ auto-close ภายใน 48 ชั่วโมง (SLA หยุดนับแล้ว): {safeDate(ticket.auto_close_at)}</p>
           </div>
-          {role !== 'customer' && (
+          {role === 'crm' && (
             <button
-              onClick={async () => {
-                const ok = await confirm({
-                  title: 'ปิดงานแทนลูกค้า',
-                  message: `ยืนยันปิดงาน ${ticket?.id} โดยไม่รออยู่ feedback จากลูกค้า?`,
-                  confirmLabel: 'ปิดงาน',
-                  danger: true,
-                });
-                if (ok) handleStatusUpdate('Closed', true);
-              }}
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold"
+              onClick={() => setIsFeedbackModalOpen(true)}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-emerald-700"
             >
-              ปิดงานแทนลูกค้า
+              ให้ Feedback และปิดงานทันที
             </button>
           )}
         </section>
@@ -459,8 +533,8 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
               {activeTab === 'logs' && (
                 <>
                   <div className="bg-slate-50 border-l-4 border-primary rounded-r-xl p-6">
-                    <h3 className="text-xs font-black uppercase tracking-widest text-primary mb-2 opacity-70">รายละเอียดปัญหา / หมายเหตุ</h3>
-                    <p className="text-slate-800 leading-relaxed font-bold text-lg">{ticket.description || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
+                    <h3 className="text-xs font-black uppercase tracking-widest text-primary mb-2 opacity-100">รายละเอียดปัญหา / หมายเหตุ</h3>
+                    <p className="text-slate-950 leading-relaxed font-black text-lg">{ticket.description || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -473,6 +547,24 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                     <InfoBlock label="Created / วันที่สร้าง" value={safeDate(ticket.created_at)} />
                     <InfoBlock label="Duration / ระยะเวลา" value={ticket.duration_min ? `${ticket.duration_min} นาที` : '-'} />
                     <InfoBlock label="Impact / รัศมี" value={ticket.impact_radius_meters ? `${ticket.impact_radius_meters.toLocaleString()} เมตร` : '-'} />
+                    {(ticket as any).creator && (
+                      <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full overflow-hidden bg-white border border-primary/20 shrink-0">
+                          {(ticket as any).creator.emp_id ? (
+                            <img src={getAvatarUrl((ticket as any).creator.emp_id)!} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-primary">
+                              <User size={20} />
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-primary/70 mb-0.5">Created By / ผู้แจ้ง</p>
+                          <p className="text-sm font-black text-slate-900">{(ticket as any).creator.full_name}</p>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase">{(ticket as any).creator.role}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -481,8 +573,8 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-black text-primary">บันทึกเหตุการณ์นาทีต่อนาที</h3>
-                      <p className="text-xs text-slate-500 mt-1">ใช้สำหรับเคส Facility เช่น ไฟไหม้ น้ำเสียล้น หรือการเรียกรถดับเพลิง</p>
+                      <h3 className="font-black text-primary text-base">บันทึกเหตุการณ์นาทีต่อนาที</h3>
+                      <p className="text-xs text-slate-600 font-bold mt-1">ใช้สำหรับเคส Facility เช่น ไฟไหม้ น้ำเสียล้น หรือการเรียกรถดับเพลิง</p>
                     </div>
                     {(role === 'technician' || role === 'crm' || role === 'admin') && ticket.status !== 'Closed' && (
                       <button onClick={() => setIsLogModalOpen(true)} className="px-4 py-2 bg-primary text-white rounded-lg text-xs font-black flex items-center gap-2">
@@ -498,35 +590,59 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                     ) : localLogs.map((log, index) => (
                       <div key={log.id} className="flex gap-4 relative">
                         {index < localLogs.length - 1 && <div className="absolute left-[13px] top-8 bottom-[-18px] w-0.5 bg-slate-200" />}
-                        <div className="w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shrink-0 z-10">
-                          <Clock size={14} />
+                        <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center shrink-0 z-10 border border-slate-200">
+                          {(log as any).author_profile?.emp_id ? (
+                            <img 
+                              src={getAvatarUrl((log as any).author_profile.emp_id)!} 
+                              alt="" 
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-primary flex items-center justify-center text-white">
+                              <Clock size={14} />
+                            </div>
+                          )}
                         </div>
                         <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4">
                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2">
-                              <p className="font-black text-slate-900 text-sm">{log.author_name}</p>
+                              <p className="font-black text-primary text-sm">
+                                {log.author_name}
+                                {(log as any).author_profile?.role && (
+                                  <span className="ml-2 text-[10px] text-slate-400 font-bold uppercase">{(log as any).author_profile.role}</span>
+                                )}
+                              </p>
                               {log.is_internal && (
                                 <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Internal</span>
                               )}
                             </div>
-                            <span className="font-mono text-[11px] text-slate-500 bg-white border border-slate-200 rounded px-2 py-1">
+                            <span className="font-mono text-xs text-slate-600 font-black bg-white border border-slate-200 rounded px-2 py-1">
                               {safeDate(log.timestamp)}
                             </span>
                           </div>
-                          <p className={`text-sm leading-relaxed ${log.is_internal ? 'text-amber-900 italic' : 'text-slate-700'}`}>{log.message}</p>
+                          <p className={`text-sm leading-relaxed ${log.is_internal ? 'text-amber-950 font-medium italic' : 'text-slate-800 font-bold'}`}>{log.message}</p>
                           {log.media_urls && log.media_urls.length > 0 && (
                             <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
                               {log.media_urls.map((url, i) => (
                                 <button 
                                   key={i} 
-                                  onClick={() => setSelectedImage(url)}
+                                  onClick={() => setSelectedMedia(url)}
                                   className="group relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-white hover:ring-2 hover:ring-primary transition-all shadow-sm text-left"
                                 >
-                                  <img 
-                                    src={url} 
-                                    alt="Attachment" 
-                                    className="w-full h-full object-cover transition-transform group-hover:scale-110" 
-                                  />
+                                  {isVideo(url) ? (
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900">
+                                      <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center mb-1">
+                                        <div className="w-0 h-0 border-t-[6px] border-t-transparent border-l-[10px] border-l-white border-b-[6px] border-b-transparent ml-1" />
+                                      </div>
+                                      <span className="text-[10px] text-white font-black uppercase">Video</span>
+                                    </div>
+                                  ) : (
+                                    <img 
+                                      src={url} 
+                                      alt="Attachment" 
+                                      className="w-full h-full object-cover transition-transform group-hover:scale-110" 
+                                    />
+                                  )}
                                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-colors">
                                     <ExternalLink size={16} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </div>
@@ -629,8 +745,11 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
 
           <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
             <h4 className="text-xs font-black text-slate-400 uppercase mb-4">สถานะ Workflow</h4>
-            {['Open', 'In Progress', 'Resolved', 'Closed'].map((step) => {
-              const complete = ['Open', 'In Progress', 'Resolved', 'Closed'].indexOf(step) <= ['Open', 'In Progress', 'Resolved', 'Closed'].indexOf(ticket.status);
+            {['Open', 'In Progress', 'Resolved (Tech)', 'Resolved (CRM)', 'Closed'].map((step) => {
+              const statusOrder = ['Open', 'In Progress', 'Resolved (Tech)', 'Resolved (CRM)', 'Closed'];
+              const currentIndex = statusOrder.indexOf(ticket.status);
+              const stepIndex = statusOrder.indexOf(step);
+              const complete = stepIndex <= currentIndex;
               return (
                 <div key={step} className="flex items-center gap-3 py-2">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center ${complete ? 'bg-primary text-white' : 'bg-slate-200 text-slate-400'}`}>
@@ -650,20 +769,52 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
               <p className="text-xs font-bold text-blue-800">ระบบจะจับเวลาปัจจุบันอัตโนมัติเมื่อกดบันทึก</p>
             </div>
+            {quickTemplates.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 bg-amber-100 rounded-md flex items-center justify-center">
+                    <Zap size={12} className="text-amber-600 fill-amber-600" />
+                  </div>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">ทางเลือกด่วน (Quick Response)</p>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-1 px-1">
+                  {quickTemplates.map((t) => {
+                    const catName = t.categories?.name;
+                    const colorClasses = categoryColors[catName as TicketCategory] || 'bg-white text-slate-600 border-slate-200';
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => {
+                          setLogText(t.template_text);
+                          toast.success('เลือก Template แล้ว', t.name || 'Quick Response');
+                        }}
+                        className={`shrink-0 flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-black uppercase tracking-wider transition-all whitespace-nowrap shadow-sm hover:shadow-md active:scale-95 border-2 ${colorClasses.replace('bg-', 'hover:bg-').replace('border-', 'border-')}`}
+                      >
+                        {catName === 'Power' && <Zap size={14} className="fill-amber-500 text-amber-500" />}
+                        {catName === 'Water Supply' && <Droplets size={14} className="fill-sky-500 text-sky-500" />}
+                        {catName === 'Facility' && <Building2 size={14} className="fill-indigo-500 text-indigo-500" />}
+                        {t.name || (t.template_text.length > 20 ? t.template_text.substring(0, 20) + '...' : t.template_text)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <textarea value={logText} onChange={(event) => setLogText(event.target.value)} rows={5} className="w-full form-field resize-none" placeholder="เช่น เวลา 18.28 น. ทีม Area Inspector ตรวจสอบพบว่า..." />
             
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
-                <input type="file" accept="image/*" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                {attachedFiles.length < 2 && (
+                <input type="file" accept="image/*,video/*" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+                {attachedFiles.length < 3 && (
                   <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 transition-colors text-slate-700 rounded-lg text-xs font-bold flex items-center gap-2">
                     <Camera size={14} />
-                    แนบรูปถ่าย {attachedFiles.length > 0 ? '(เพิ่ม)' : ''}
+                    แนบรูป/วิดีโอ {attachedFiles.length > 0 ? '(เพิ่ม)' : ''}
                   </button>
                 )}
                 
                 {attachedFiles.map((file, idx) => (
                   <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-lg">
+                    {file.type.startsWith('video/') ? <Video size={12} className="text-primary" /> : <Camera size={12} className="text-slate-400" />}
                     <span className="text-[10px] font-bold text-slate-500 truncate max-w-[100px]">{file.name}</span>
                     <button onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-500">
                       <X size={14} />
@@ -671,6 +822,15 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                   </div>
                 ))}
               </div>
+
+              {isUploading && (
+                <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2">
+                  <div 
+                    className="bg-primary h-1.5 rounded-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              )}
 
               {role !== 'customer' && (
                 <label className="flex items-center gap-2 cursor-pointer group">
@@ -692,19 +852,47 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
       )}
 
       {isFeedbackModalOpen && (
-        <Modal title="Feedback ลูกค้า" onClose={() => setIsFeedbackModalOpen(false)}>
-          <div className="space-y-5">
-            <div className="flex justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((score) => (
-                <button key={score} onClick={() => setFeedback({ ...feedback, score })} className="transition-transform hover:scale-110">
-                  <Star size={34} className={score <= feedback.score ? 'fill-yellow-400 text-yellow-400' : 'text-slate-200'} />
-                </button>
-              ))}
+        <Modal title="Confirm & Feedback (304IP Way)" onClose={() => setIsFeedbackModalOpen(false)}>
+          <div className="space-y-6">
+            <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+              <p className="text-xs font-bold text-amber-800 mb-2 uppercase tracking-wider">คุณภาพการแก้ไขงาน (Quality of Fix)</p>
+              <div className="flex gap-2 mb-3">
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <button key={score} onClick={() => setFeedback({ ...feedback, fixScore: score })} className="transition-transform hover:scale-110">
+                    <Star size={30} className={score <= feedback.fixScore ? 'fill-yellow-400 text-yellow-400' : 'text-slate-200'} />
+                  </button>
+                ))}
+              </div>
+              <textarea 
+                value={feedback.fixComment} 
+                onChange={(e) => setFeedback({ ...feedback, fixComment: e.target.value })} 
+                rows={2} 
+                className="w-full form-field text-sm bg-white" 
+                placeholder="คอมเมนต์เรื่องการซ่อมแซม..." 
+              />
             </div>
-            <textarea value={feedback.comment} onChange={(event) => setFeedback({ ...feedback, comment: event.target.value })} rows={4} className="w-full form-field resize-none" placeholder="ความคิดเห็นเพิ่มเติม..." />
-            <button onClick={submitFeedback} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2">
-              <MessageSquare size={18} />
-              ส่ง Feedback และ Closed
+
+            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+              <p className="text-xs font-bold text-blue-800 mb-2 uppercase tracking-wider">การประสานงานและการบริการ (Service Quality)</p>
+              <div className="flex gap-2 mb-3">
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <button key={score} onClick={() => setFeedback({ ...feedback, serviceScore: score })} className="transition-transform hover:scale-110">
+                    <Star size={30} className={score <= feedback.serviceScore ? 'fill-yellow-400 text-yellow-400' : 'text-slate-200'} />
+                  </button>
+                ))}
+              </div>
+              <textarea 
+                value={feedback.serviceComment} 
+                onChange={(e) => setFeedback({ ...feedback, serviceComment: e.target.value })} 
+                rows={2} 
+                className="w-full form-field text-sm bg-white" 
+                placeholder="คอมเมนต์เรื่องการให้บริการ/การสื่อสาร..." 
+              />
+            </div>
+
+            <button onClick={submitFeedback} className="w-full py-4 bg-primary text-white rounded-xl font-black flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
+              <CheckCircle size={20} />
+              บันทึก Feedback และปิดงาน (Closed)
             </button>
           </div>
         </Modal>
@@ -742,34 +930,43 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
         </div>
       )}
 
-      {/* ── Image Lightbox ── */}
-      {selectedImage && (
+      {/* ── Media Lightbox ── */}
+      {selectedMedia && (
         <div 
           className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300"
-          onClick={() => setSelectedImage(null)}
+          onClick={() => setSelectedMedia(null)}
         >
           <button 
             className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-10"
-            onClick={() => setSelectedImage(null)}
+            onClick={() => setSelectedMedia(null)}
           >
             <X size={24} />
           </button>
           
-          <div className="relative w-full max-w-5xl max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
-            <img 
-              src={selectedImage} 
-              alt="Full view" 
-              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300" 
-            />
+          <div className="relative w-full max-w-5xl max-h-[90vh] flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
+            {isVideo(selectedMedia) ? (
+              <video 
+                src={selectedMedia} 
+                controls 
+                autoPlay
+                className="max-w-full max-h-[80vh] rounded-lg shadow-2xl"
+              />
+            ) : (
+              <img 
+                src={selectedMedia} 
+                alt="Full view" 
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300" 
+              />
+            )}
             
             <a 
-              href={selectedImage} 
+              href={selectedMedia} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="absolute bottom-[-50px] left-1/2 -translate-x-1/2 flex items-center gap-2 text-white/70 hover:text-white text-sm font-bold transition-colors"
+              className="mt-6 flex items-center gap-2 text-white/70 hover:text-white text-sm font-bold transition-colors"
             >
               <ExternalLink size={16} />
-              Open Original Image
+              Open Original {isVideo(selectedMedia) ? 'Video' : 'Image'}
             </a>
           </div>
         </div>
@@ -781,8 +978,8 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
 function InfoBlock({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{label}</p>
-      <p className="text-sm font-bold text-slate-800">{value}</p>
+      <p className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1">{label}</p>
+      <p className="text-sm font-black text-slate-900">{value}</p>
     </div>
   );
 }

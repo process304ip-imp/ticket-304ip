@@ -16,6 +16,7 @@ import {
   Settings,
   ShieldCheck,
   Ticket,
+  Trophy,
   User,
   Users,
   Wrench,
@@ -45,6 +46,8 @@ const viewTitles: Record<string, string> = {
   customers: 'Customer & Registration Management',
   team: 'Response Team Dispatch',
   staff: 'Staff Management',
+  'master-data': 'Master Data Management (304IP Way)',
+  leaderboard: 'Performance Leaderboard',
 };
 
 export function Layout({ children, currentView, setCurrentView, role, onLogout, notifications, onMarkRead, profile, lang = 'TH', setLang }: LayoutProps) {
@@ -69,10 +72,12 @@ export function Layout({ children, currentView, setCurrentView, role, onLogout, 
   const navItems = [
     { id: 'dashboard', label: 'รายงานผู้บริหาร', icon: LayoutDashboard, roles: ['admin'] },
     { id: 'tickets', label: role === 'customer' ? 'ตั๋วของฉัน' : 'Ticket Board', icon: Ticket, roles: ['admin', 'crm', 'customer'] },
-    { id: 'assigned', label: 'งานที่ได้รับมอบหมาย', icon: ClipboardList, roles: ['technician'] },
-    { id: 'customers', label: 'พอร์ทัลลูกค้า', icon: QrCode, roles: ['crm', 'admin'] },
-    { id: 'team', label: 'ทีมตอบสนอง', icon: Users, roles: ['crm', 'admin'] },
-    { id: 'staff', label: 'จัดการทีมงาน', icon: ShieldCheck, roles: ['admin'] },
+    { id: 'assigned', label: 'งานของฉัน', icon: ClipboardList, roles: ['technician'] },
+    { id: 'customers', label: 'ลูกค้า', icon: QrCode, roles: ['crm', 'admin'] },
+    { id: 'team', label: 'ทีมช่าง', icon: Users, roles: ['crm', 'admin'] },
+    { id: 'staff', label: 'ผู้ใช้งาน', icon: ShieldCheck, roles: ['admin'] },
+    { id: 'master-data', label: 'Master Data', icon: Settings, roles: ['admin', 'crm'] },
+    { id: 'leaderboard', label: 'Leaderboard', icon: Trophy, roles: ['admin', 'crm'] },
   ].filter((item) => item.roles.includes(role));
 
   const userDetails = {
