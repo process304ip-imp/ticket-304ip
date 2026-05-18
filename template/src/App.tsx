@@ -210,9 +210,9 @@ export default function App() {
       <Suspense fallback={<PageLoading />}>
         {viewToShow === 'dashboard' && <Dashboard role={role} onSelectTicket={handleSelectTicket} lang={lang} />}
         {(viewToShow === 'tickets' || viewToShow === 'assigned') && (
-          <TicketList onSelectTicket={handleSelectTicket} role={role} initialMode={viewToShow === 'assigned' ? 'assigned' : 'board'} profile={profile} />
+          <TicketList onSelectTicket={handleSelectTicket} role={role} initialMode={viewToShow === 'assigned' ? 'assigned' : 'board'} profile={profile} lang={lang} />
         )}
-        {viewToShow === 'ticket-details' && <TicketDetails ticketId={selectedTicketId} role={role} onAddNotification={addNotification} />}
+        {viewToShow === 'ticket-details' && <TicketDetails ticketId={selectedTicketId} role={role} onAddNotification={addNotification} lang={lang} />}
         {viewToShow === 'customers' && <CustomerList />}
         {viewToShow === 'team' && <Team onAddNotification={addNotification} />}
         {viewToShow === 'staff' && <StaffManagement />}

@@ -69,9 +69,10 @@ interface TicketDetailsProps {
   ticketId: string | null;
   role: Role;
   onAddNotification: (title: string, message: string, type?: Notification['type']) => void;
+  lang?: 'TH' | 'EN';
 }
 
-export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetailsProps) {
+export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }: TicketDetailsProps) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [teams, setTeams] = useState<ResponseTeam[]>([]);
@@ -533,7 +534,7 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="font-mono text-xs font-black text-primary">{ticket.id}</span>
             <span className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-widest border ${statusColors[ticket.status as any]}`}>
-              {ticket.status}
+              {getStatusDisplay(ticket.status, role, lang)}
             </span>
             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-widest border ${categoryColors[ticket.category as any] || 'bg-slate-50 text-slate-600 border-slate-100/50'}`}>
               {ticket.category === 'Power' && <Zap size={12} className="fill-amber-500 text-amber-500" />}
@@ -759,26 +760,43 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
       )}
 
       {ticket.status === 'Resolved (CRM)' && (
-        <section className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 p-3 bg-emerald-100 rounded-xl text-emerald-600">
-              <CheckCircle size={24} />
+        <section className="relative overflow-hidden bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-teal-500/5 rounded-full blur-2xl -ml-16 -mb-16 pointer-events-none" />
+          
+          <div className="relative flex items-start gap-4">
+            <div className="shrink-0 p-3.5 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl text-white shadow-lg shadow-emerald-500/20 ring-4 ring-emerald-500/10 flex items-center justify-center">
+              <CheckCircle size={26} className="animate-bounce" />
             </div>
             <div>
-              <h3 className="font-black text-emerald-950 text-lg">งานถูกยืนยันความเรียบร้อยโดย CRM แล้ว</h3>
-              <p className="text-sm text-emerald-800 mt-1 leading-relaxed">
-                ระบบจะปิดงานอัตโนมัติภายใน 48 ชม.: <span className="font-black">{safeDate(ticket.auto_close_at)}</span> (SLA หยุดนับแล้ว)
+              <h3 className="font-black text-emerald-950 text-xl tracking-tight">
+                {role === 'customer' 
+                  ? (lang === 'TH' ? '🎉 บริการได้รับการแก้ไขและรอคุณตรวจสอบผลงาน!' : '🎉 Services Resolved & Pending Your Review!')
+                  : (lang === 'TH' ? 'งานถูกยืนยันความเรียบร้อยโดย CRM แล้ว' : 'Resolved & Confirmed by CRM')}
+              </h3>
+              <p className="text-sm font-medium text-emerald-800/90 mt-1.5 leading-relaxed max-w-xl">
+                {lang === 'TH' ? (
+                  <>
+                    ระบบจะปิดงานโดยอัตโนมัติใน <span className="font-black underline text-emerald-955">{safeDate(ticket.auto_close_at)}</span> (SLA หยุดนับแล้ว) หากคุณพึงพอใจกรุณาให้คะแนนความพึงพอใจ หรือหากปัญหายังไม่ได้รับการแก้ไขอย่างสมบูรณ์ คุณสามารถเปิดตั๋วใหม่เพื่อทำงานต่อได้ทันที
+                  </>
+                ) : (
+                  <>
+                    System will automatically close the ticket on <span className="font-black underline text-emerald-955">{safeDate(ticket.auto_close_at)}</span> (SLA Stopped). If you are satisfied, please rate our service. Otherwise, you can reopen it to request further assistance.
+                  </>
+                )}
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="relative flex flex-wrap items-center gap-3 shrink-0">
             {(role === 'customer' || role === 'crm' || role === 'admin') && (
               <button
                 onClick={() => setIsFeedbackModalOpen(true)}
-                className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-black shadow-md hover:bg-emerald-700 hover:shadow-emerald-100 transition-all flex items-center gap-1.5"
+                className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl text-sm font-black shadow-[0_4px_12px_rgba(16,185,129,0.25)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 ring-2 ring-white/10"
               >
-                <Star size={16} className="fill-white" />
-                {role === 'customer' ? 'ให้ Feedback และปิดงานทันที' : 'บันทึก Feedback และปิดงานทันที'}
+                <Star size={16} className="fill-white animate-pulse" />
+                {role === 'customer' 
+                  ? (lang === 'TH' ? 'ประเมินและยืนยันปิดตั๋วทันที' : 'Rate & Close Ticket Now') 
+                  : (lang === 'TH' ? 'บันทึก Feedback และปิดงาน' : 'Record Feedback & Close')}
               </button>
             )}
             {(role === 'customer' || role === 'crm' || role === 'admin') && (
@@ -787,9 +805,11 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                   setReopenReason('');
                   setIsReopenModalOpen(true);
                 }}
-                className="px-5 py-2.5 border border-red-200 text-red-700 bg-white hover:bg-red-50 rounded-xl text-sm font-black transition-all"
+                className="px-6 py-3 border-2 border-red-200/80 text-red-700 bg-white hover:bg-red-50 hover:border-red-300 rounded-2xl text-sm font-black transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
-                {role === 'customer' ? 'ยังแก้ไขไม่สำเร็จ (Reopen)' : 'ส่งเรื่องกลับไปแก้ไข (Reopen)'}
+                {role === 'customer' 
+                  ? (lang === 'TH' ? 'ยังแก้ไขไม่สำเร็จ (Reopen)' : 'Not Fixed Yet (Reopen)') 
+                  : (lang === 'TH' ? 'ส่งเรื่องกลับไปแก้ไข (Reopen)' : 'Reopen Ticket')}
               </button>
             )}
           </div>
@@ -1488,4 +1508,29 @@ function safeDate(raw: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function getStatusDisplay(status: string, role: string, lang: 'TH' | 'EN' = 'TH') {
+  if (role === 'customer') {
+    switch (status) {
+      case 'Open': return lang === 'TH' ? 'แจ้งเรื่องแล้ว' : 'Ticket Received';
+      case 'In Progress': return lang === 'TH' ? 'กำลังดำเนินการ' : 'In Progress';
+      case 'Resolved (Tech)': return lang === 'TH' ? 'กำลังตรวจสอบผลงาน' : 'Under Review';
+      case 'Resolved (CRM)': return lang === 'TH' ? 'รอคุณตรวจสอบ/ปิดงาน' : 'Awaiting Your Review';
+      case 'Closed': return lang === 'TH' ? 'ปิดงานเรียบร้อย' : 'Closed';
+      default: return status;
+    }
+  }
+  
+  if (lang === 'TH') {
+    switch (status) {
+      case 'Open': return 'Open';
+      case 'In Progress': return 'In Progress';
+      case 'Resolved (Tech)': return 'รอตรวจรับ (Tech)';
+      case 'Resolved (CRM)': return 'รอ Feedback (CRM)';
+      case 'Closed': return 'Closed';
+      default: return status;
+    }
+  }
+  return status;
 }

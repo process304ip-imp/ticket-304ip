@@ -194,58 +194,123 @@ function getLastLogAt(ticket: any) {
   return new Date(Math.max(...timestamps)).toISOString();
 }
 
-function getSlaState(ticket: any, currentTime: number = Date.now()) {
+function formatTimeUntilTH(raw: string | null | undefined) {
+  const date = parseDate(raw);
+  if (!date) return '-';
+  const diffMinutes = Math.floor((date.getTime() - Date.now()) / 60000);
+  if (diffMinutes <= 0) return 'ตอนนี้';
+  if (diffMinutes < 60) return `${diffMinutes} นาที`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} ชม.`;
+  return `${Math.floor(diffHours / 24)} วัน`;
+}
+
+function getStatusDisplay(status: string, role: string, lang: 'TH' | 'EN' = 'TH') {
+  if (role === 'customer') {
+    switch (status) {
+      case 'Open': return lang === 'TH' ? 'แจ้งเรื่องแล้ว' : 'Ticket Received';
+      case 'In Progress': return lang === 'TH' ? 'กำลังดำเนินการ' : 'In Progress';
+      case 'Resolved (Tech)': return lang === 'TH' ? 'กำลังตรวจสอบผลงาน' : 'Under Review';
+      case 'Resolved (CRM)': return lang === 'TH' ? 'รอคุณตรวจสอบ/ปิดงาน' : 'Awaiting Your Review';
+      case 'Closed': return lang === 'TH' ? 'ปิดงานเรียบร้อย' : 'Closed';
+      default: return status;
+    }
+  }
+  
+  if (lang === 'TH') {
+    switch (status) {
+      case 'Open': return 'Open';
+      case 'In Progress': return 'In Progress';
+      case 'Resolved (Tech)': return 'รอตรวจรับ (Tech)';
+      case 'Resolved (CRM)': return 'รอ Feedback (CRM)';
+      case 'Closed': return 'Closed';
+      default: return status;
+    }
+  }
+  return status;
+}
+
+function getSlaState(ticket: any, currentTime: number = Date.now(), role?: string, lang: 'TH' | 'EN' = 'TH') {
   if (ticket.status === 'Closed') {
-    return { label: 'Closed', className: 'bg-slate-100 text-slate-600 border-slate-200', isGlowing: false };
+    return { 
+      label: lang === 'TH' ? 'ปิดงานแล้ว' : 'Closed', 
+      className: 'bg-slate-100 text-slate-600 border-slate-200', 
+      isGlowing: false 
+    };
   }
   if (ticket.status === 'Resolved (Tech)' || ticket.status === 'Resolved (CRM)') {
+    const isCustomer = role === 'customer';
+    let label = '';
+    
+    if (ticket.status === 'Resolved (CRM)' && ticket.auto_close_at) {
+      label = lang === 'TH' 
+        ? `ปิดอัตโนมัติใน ${formatTimeUntilTH(ticket.auto_close_at)}` 
+        : `Auto-closes in ${formatTimeUntil(ticket.auto_close_at)}`;
+    } else {
+      if (ticket.status === 'Resolved (Tech)') {
+        label = isCustomer
+          ? (lang === 'TH' ? 'กำลังตรวจสอบผลงาน' : 'Under Review')
+          : (lang === 'TH' ? 'รอ CRM ยืนยัน' : 'Waiting CRM Confirm');
+      } else {
+        label = isCustomer
+          ? (lang === 'TH' ? 'รอคุณประเมินปิดงาน' : 'Waiting Your Review')
+          : (lang === 'TH' ? 'รอ Feedback' : 'Waiting Feedback');
+      }
+    }
+
     return { 
-      label: ticket.status === 'Resolved (CRM)' && ticket.auto_close_at 
-        ? `Auto-close ${formatTimeUntil(ticket.auto_close_at)}` 
-        : (ticket.status === 'Resolved (Tech)' ? 'Waiting CRM Confirm' : 'Waiting Feedback'), 
-      className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      isGlowing: false
+      label, 
+      className: ticket.status === 'Resolved (CRM)' && isCustomer
+        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold'
+        : 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      isGlowing: ticket.status === 'Resolved (CRM)' && isCustomer
     };
   }
 
   const due = parseDate(ticket.sla_due_at);
-  if (!due) return { label: 'No SLA', className: 'bg-slate-50 text-slate-500 border-slate-200', isGlowing: false };
+  if (!due) return { label: lang === 'TH' ? 'ไม่มี SLA' : 'No SLA', className: 'bg-slate-50 text-slate-500 border-slate-200', isGlowing: false };
 
   const minutesLeft = Math.floor((due.getTime() - currentTime) / 60000);
   if (minutesLeft < 0) {
     const overdueMins = Math.abs(minutesLeft);
-    const label = overdueMins > 60 ? `Overdue ${Math.floor(overdueMins/60)}h ${overdueMins%60}m` : `Overdue ${overdueMins}m`;
+    const label = lang === 'TH'
+      ? (overdueMins > 60 ? `เลยกำหนด ${Math.floor(overdueMins/60)} ชม. ${overdueMins%60} นาที` : `เลยกำหนด ${overdueMins} นาที`)
+      : (overdueMins > 60 ? `Overdue ${Math.floor(overdueMins/60)}h ${overdueMins%60}m` : `Overdue ${overdueMins}m`);
     return { label, className: 'bg-red-50 text-red-700 border-red-200', isGlowing: true };
   }
   
   if (minutesLeft <= 60) {
-    return { label: `Due ${minutesLeft}m`, className: 'bg-amber-50 text-amber-700 border-amber-200', isGlowing: true };
+    const label = lang === 'TH' ? `เหลือเวลา ${minutesLeft} นาที` : `Due ${minutesLeft}m`;
+    return { label, className: 'bg-amber-50 text-amber-700 border-amber-200', isGlowing: true };
   }
 
   const hoursLeft = Math.floor(minutesLeft / 60);
   const minsLeft = minutesLeft % 60;
-  return { label: `Due ${hoursLeft}h ${minsLeft}m`, className: 'bg-blue-50 text-blue-700 border-blue-200', isGlowing: false };
+  const label = lang === 'TH'
+    ? `เหลือเวลา ${hoursLeft} ชม. ${minsLeft} นาที`
+    : `Due ${hoursLeft}h ${minsLeft}m`;
+  return { label, className: 'bg-blue-50 text-blue-700 border-blue-200', isGlowing: false };
 }
 
-function SlaBadge({ ticket, variant = 'card' }: { ticket: any; variant?: 'card' | 'list' }) {
+function SlaBadge({ ticket, variant = 'card', role, lang = 'TH' }: { ticket: any; variant?: 'card' | 'list'; role?: string; lang?: 'TH' | 'EN' }) {
   const [now, setNow] = useState(Date.now());
   
   useEffect(() => {
     if (ticket.status === 'Closed' || ticket.status?.startsWith('Resolved')) return;
     if (!ticket.sla_due_at) return;
     
-    const interval = setInterval(() => setNow(Date.now()), 60000); // Update every minute
+    const interval = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(interval);
   }, [ticket.status, ticket.sla_due_at]);
 
-  const slaState = getSlaState(ticket, now);
+  const slaState = getSlaState(ticket, now, role, lang);
   
   const baseClasses = variant === 'card' 
     ? "px-2 py-0.5 rounded-md border text-[9px] font-black uppercase"
     : "inline-flex w-fit px-2 py-0.5 rounded-md text-[10px] font-black border";
     
   const glowingClasses = slaState.isGlowing 
-    ? "animate-pulse ring-2 ring-offset-1 ring-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.5)]" 
+    ? "animate-pulse ring-2 ring-offset-1 ring-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.5)]" 
     : "";
   
   return (
@@ -262,7 +327,7 @@ function getChannelClass(channel: string | null | undefined) {
   return 'bg-slate-50 text-slate-600 border-slate-200';
 }
 
-export function TicketList({ onSelectTicket, role, initialMode = 'board' }: TicketListProps) {
+export function TicketList({ onSelectTicket, role, initialMode = 'board', lang = 'TH' }: TicketListProps) {
   const { profile } = useAuth();
   const { toast, confirm } = useToast();
   const [tickets, setTickets] = useState<(Ticket & { companies: { name: string, area: string } | null })[]>([]);
@@ -1088,40 +1153,105 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   return (
     <>
     <div className="max-w-[1800px] mx-auto space-y-6">
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <section className={`grid grid-cols-2 md:grid-cols-${role === 'customer' ? '4' : '3'} lg:grid-cols-${role === 'customer' ? '4' : '5'} gap-4`}>
         {loading && filteredTickets.length === 0 ? (
           <>
             <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
-            <SkeletonCard />
+            {role !== 'customer' && <SkeletonCard />}
           </>
         ) : (
-          [
-            { label: initialMode === 'assigned' ? 'งานที่รับผิดชอบ' : 'Ticket ทั้งหมด', value: tickets.length, tone: 'border-primary', icon: CheckCircle2, filter: null },
-            { label: 'Critical / High', value: tickets.filter((ticket) => ['Critical', 'High'].includes(ticket.priority)).length, tone: 'border-red-400', icon: AlertTriangle, filter: 'Critical / High' },
-            { label: 'รอตรวจรับ (Tech)', value: tickets.filter((ticket) => ticket.status === 'Resolved (Tech)').length, tone: 'border-amber-400', icon: Loader2, filter: 'Resolved (Tech)' },
-            { label: 'รอ Feedback (CRM)', value: tickets.filter((ticket) => ticket.status === 'Resolved (CRM)').length, tone: 'border-emerald-400', icon: Send, filter: 'รอ Feedback' },
-            { label: 'Closed', value: tickets.filter((ticket) => ticket.status === 'Closed').length, tone: 'border-slate-400', icon: CheckCircle2, filter: 'Closed' },
-          ].map((card) => {
-            const Icon = card.icon;
-            const isActive = activeCardFilter === card.filter;
-            return (
-              <div 
-                key={card.label} 
-                onClick={() => setActiveCardFilter(isActive ? null : card.filter)}
-                className={`bg-white p-5 rounded-xl shadow-sm border-l-4 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] ${card.tone} ${isActive ? 'ring-2 ring-primary ring-offset-2' : ''}`}
-              >
-                <div className="flex justify-between items-start gap-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-wider text-slate-500">{card.label}</p>
-                    <p className="text-3xl font-black text-primary mt-1">{card.value}</p>
+          (() => {
+            const cards = role === 'customer' ? [
+              { 
+                label: lang === 'TH' ? 'รายการแจ้งทั้งหมด' : 'All Tickets', 
+                value: tickets.length, 
+                tone: 'border-indigo-500', 
+                icon: CheckCircle2, 
+                filter: null 
+              },
+              { 
+                label: lang === 'TH' ? 'กำลังดำเนินการ' : 'In Progress', 
+                value: tickets.filter((ticket) => ticket.status === 'In Progress').length, 
+                tone: 'border-amber-500', 
+                icon: Loader2, 
+                filter: 'In Progress' 
+              },
+              { 
+                label: lang === 'TH' ? 'รอคุณตรวจสอบ/ปิดงาน' : 'Pending Review', 
+                value: tickets.filter((ticket) => ticket.status === 'Resolved (CRM)').length, 
+                tone: 'border-emerald-500', 
+                icon: Send, 
+                filter: 'รอ Feedback' 
+              },
+              { 
+                label: lang === 'TH' ? 'ปิดงานเรียบร้อย' : 'Closed', 
+                value: tickets.filter((ticket) => ticket.status === 'Closed').length, 
+                tone: 'border-slate-500', 
+                icon: CheckCircle2, 
+                filter: 'Closed' 
+              },
+            ] : [
+              { 
+                label: initialMode === 'assigned' 
+                  ? (lang === 'TH' ? 'งานที่รับผิดชอบ' : 'My Assigned Tickets') 
+                  : (lang === 'TH' ? 'Ticket ทั้งหมด' : 'All Tickets'), 
+                value: tickets.length, 
+                tone: 'border-primary', 
+                icon: CheckCircle2, 
+                filter: null 
+              },
+              { 
+                label: 'Critical / High', 
+                value: tickets.filter((ticket) => ['Critical', 'High'].includes(ticket.priority)).length, 
+                tone: 'border-red-400', 
+                icon: AlertTriangle, 
+                filter: 'Critical / High' 
+              },
+              { 
+                label: lang === 'TH' ? 'รอตรวจรับ (Tech)' : 'Resolved (Tech)', 
+                value: tickets.filter((ticket) => ticket.status === 'Resolved (Tech)').length, 
+                tone: 'border-amber-400', 
+                icon: Loader2, 
+                filter: 'Resolved (Tech)' 
+              },
+              { 
+                label: lang === 'TH' ? 'รอ Feedback (CRM)' : 'Resolved (CRM)', 
+                value: tickets.filter((ticket) => ticket.status === 'Resolved (CRM)').length, 
+                tone: 'border-emerald-400', 
+                icon: Send, 
+                filter: 'รอ Feedback' 
+              },
+              { 
+                label: 'Closed', 
+                value: tickets.filter((ticket) => ticket.status === 'Closed').length, 
+                tone: 'border-slate-400', 
+                icon: CheckCircle2, 
+                filter: 'Closed' 
+              },
+            ];
+
+            return cards.map((card) => {
+              const Icon = card.icon;
+              const isActive = activeCardFilter === card.filter;
+              return (
+                <div 
+                  key={card.label} 
+                  onClick={() => setActiveCardFilter(isActive ? null : card.filter)}
+                  className={`bg-white p-5 rounded-xl shadow-sm border-l-4 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] ${card.tone} ${isActive ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                >
+                  <div className="flex justify-between items-start gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-wider text-slate-500">{card.label}</p>
+                      <p className="text-3xl font-black text-primary mt-1">{card.value}</p>
+                    </div>
+                    <Icon size={20} className={isActive ? 'text-primary' : 'text-slate-400'} />
                   </div>
-                  <Icon size={20} className={isActive ? 'text-primary' : 'text-slate-400'} />
                 </div>
-              </div>
-            );
-          })
+              );
+            });
+          })()
         )}
       </section>
 
@@ -1311,7 +1441,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                         <span className="font-mono text-xs font-black text-blue-600">
                           {ticket.id}
                         </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight ${statusColors[ticket.status as TicketStatus]}`}>{ticket.status}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight ${statusColors[ticket.status as TicketStatus]}`}>{getStatusDisplay(ticket.status, role, lang)}</span>
                         {/* Module 3: New Ticket Badge */}
                         {newTicketIds.has(ticket.id) && (
                           <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500 text-white rounded-full text-[9px] font-black uppercase tracking-wider animate-pulse">
@@ -1354,7 +1484,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
 	                    <div className="flex flex-wrap items-center gap-2">
 	                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${priorityColors[ticket.priority as any]}`}>{ticket.priority}</span>
                         {ticket.channel && <span className={`px-2 py-0.5 rounded-md border text-[9px] font-black uppercase ${getChannelClass(ticket.channel)}`}>{ticket.channel}</span>}
-                        <SlaBadge ticket={ticket} variant="card" />
+                        <SlaBadge ticket={ticket} variant="card" role={role} lang={lang} />
 	                    </div>
 	                    <div className="flex items-center gap-2">
                         {(() => {
@@ -1495,7 +1625,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                       <td className="px-3 py-4 border-b border-slate-100">
                         <div className="flex flex-col gap-2">
                           <span className={`inline-flex w-fit px-3 py-1 rounded-lg text-xs font-black uppercase tracking-widest border ${statusColors[ticket.status as TicketStatus]}`}>
-                            {ticket.status}
+                            {getStatusDisplay(ticket.status, role, lang)}
                           </span>
                           <div className="flex items-center gap-2">
                             <span className={`w-2.5 h-2.5 rounded-full ${
@@ -1505,7 +1635,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                             } animate-pulse`} />
                             <span className="text-xs font-black text-slate-500 uppercase">{ticket.priority}</span>
                           </div>
-                          <SlaBadge ticket={ticket} variant="list" />
+                          <SlaBadge ticket={ticket} variant="list" role={role} lang={lang} />
                         </div>
                       </td>
                       <td className="px-3 py-4 border-b border-slate-100">
