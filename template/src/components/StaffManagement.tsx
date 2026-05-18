@@ -272,13 +272,13 @@ export function StaffManagement() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50">
-                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">พนักงาน</th>
-                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">รหัส / แผนก</th>
-                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">อีเมล</th>
-                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">Role</th>
-                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">สถานะ</th>
-                <th className="px-5 py-3.5 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200 text-right">จัดการ</th>
+              <tr className="bg-slate-50/75">
+                <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">ข้อมูลทีมงาน</th>
+                <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">สิทธิ์การใช้งาน (Role)</th>
+                <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">แผนกงาน (HRMS)</th>
+                <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">ทีมตอบสนอง (Response Teams)</th>
+                <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200">สถานะ</th>
+                <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200 text-right">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -289,11 +289,11 @@ export function StaffManagement() {
                   </td>
                 </tr>
               ) : activeStaff.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
-                  {/* Name + Photo */}
-                  <td className="px-5 py-3.5">
+                <tr key={user.id} className="hover:bg-slate-50/50 transition-colors group">
+                  {/* Name + Photo + Email + EMP ID */}
+                  <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-blue-50 text-primary flex items-center justify-center overflow-hidden border border-slate-200 shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-blue-50 text-primary flex items-center justify-center overflow-hidden border border-slate-200 shadow-sm shrink-0">
                         {user.emp_id ? (
                           <img
                             src={`https://wms.advanceagro.net/WSVIS/api/Face/GetImage?CardID=${user.emp_id}`}
@@ -302,72 +302,28 @@ export function StaffManagement() {
                             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                           />
                         ) : (
-                          <User size={16} />
+                          <User size={18} />
                         )}
                       </div>
-                      <span className="font-bold text-slate-800 text-sm">{user.full_name || '—'}</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-800 text-sm truncate">{user.full_name || '—'}</span>
+                          {user.emp_id && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-mono font-bold text-slate-600">
+                              {user.emp_id}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-slate-400 truncate block mt-0.5">{user.email}</span>
+                      </div>
                     </div>
                   </td>
 
-                  {/* EMP ID + Department + Teams */}
-                  <td className="px-5 py-3.5 align-top">
-                    <p className="text-xs font-mono font-black text-slate-700">{user.emp_id || '—'}</p>
-                    {editingId === user.id ? (
-                      editRole === 'technician' ? (
-                        <div className="mt-2 space-y-1">
-                          <p className="text-[10px] font-black text-slate-400 uppercase">กำหนดทีมตอบสนอง</p>
-                          <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
-                            {responseTeams.map(t => (
-                              <label key={t.id} className="flex items-center gap-1.5 cursor-pointer">
-                                <input 
-                                  type="checkbox" 
-                                  className="w-3 h-3 text-primary rounded border-slate-300"
-                                  checked={editTeams.includes(t.id)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) setEditTeams(prev => [...prev, t.id]);
-                                    else setEditTeams(prev => prev.filter(id => id !== t.id));
-                                  }}
-                                />
-                                <span className="text-[10px] font-bold text-slate-700">{t.name}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-[10px] text-slate-400 mt-1">Teams เฉพาะสิทธิ์ Technician</p>
-                      )
-                    ) : (
-                      <>
-                        {user.department && (Array.isArray(user.department) ? user.department.length > 0 : !!user.department) && (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <Building2 size={12} className="text-slate-400" />
-                            <p className="text-xs text-slate-500">
-                              {Array.isArray(user.department) ? user.department.join(', ') : user.department}
-                            </p>
-                          </div>
-                        )}
-                        {user.teams && user.teams.length > 0 && (
-                          <div className="flex items-start gap-1 mt-1">
-                            <ShieldCheck size={12} className="text-primary/70 shrink-0 mt-0.5" />
-                            <p className="text-[10px] text-primary/80 font-bold leading-tight">
-                              {user.teams.map((tId: string) => responseTeams.find(rt => rt.id === tId)?.name || tId).join(', ')}
-                            </p>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </td>
-
-                  {/* Email */}
-                  <td className="px-5 py-3.5 text-sm text-slate-600 max-w-[180px]">
-                    <span className="truncate block">{user.email}</span>
-                  </td>
-
                   {/* Role — inline edit */}
-                  <td className="px-5 py-3.5">
+                  <td className="px-5 py-4 align-middle">
                     {editingId === user.id ? (
                       <select
-                        className="text-xs border border-slate-300 rounded-lg px-2 py-1.5 font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                        className="text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold focus:ring-2 focus:ring-primary/20 outline-none bg-white shadow-sm"
                         value={editRole}
                         onChange={e => setEditRole(e.target.value)}
                         autoFocus
@@ -381,20 +337,91 @@ export function StaffManagement() {
                     )}
                   </td>
 
+                  {/* Department (HRMS) */}
+                  <td className="px-5 py-4 align-middle">
+                    {user.department && (Array.isArray(user.department) ? user.department.length > 0 : !!user.department) ? (
+                      <div className="flex flex-wrap gap-1 max-w-[200px]">
+                        {(Array.isArray(user.department) ? user.department : [user.department]).map((dept: string, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-600 text-[10.5px] font-bold">
+                            <Building2 size={10} className="text-slate-400" />
+                            {dept}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
+
+                  {/* Teams */}
+                  <td className="px-5 py-4 align-middle">
+                    {editingId === user.id ? (
+                      editRole === 'technician' ? (
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">เลือกทีมตอบสนอง</p>
+                          <div className="flex flex-wrap gap-1.5 max-w-[280px]">
+                            {responseTeams.map(t => {
+                              const active = editTeams.includes(t.id);
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (active) setEditTeams(prev => prev.filter(id => id !== t.id));
+                                    else setEditTeams(prev => [...prev, t.id]);
+                                  }}
+                                  className={`px-2 py-1 rounded text-[10.5px] font-bold border transition-all ${
+                                    active 
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-sm font-black'
+                                      : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {t.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-medium italic">Teams เฉพาะสิทธิ์ Technician</span>
+                      )
+                    ) : (
+                      user.role === 'technician' ? (
+                        user.teams && user.teams.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-[260px]">
+                            {user.teams.map((tId: string) => {
+                              const teamName = responseTeams.find(rt => rt.id === tId)?.name || tId;
+                              return (
+                                <span key={tId} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-blue-100 bg-blue-50 text-blue-700 text-[10.5px] font-black shadow-sm">
+                                  <ShieldCheck size={11} className="text-blue-500" />
+                                  {teamName}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-amber-500 font-bold text-[10.5px] border border-amber-200 bg-amber-50 px-2 py-0.5 rounded-full">ยังไม่ได้เลือกทีม</span>
+                        )
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )
+                    )}
+                  </td>
+
                   {/* Status */}
-                  <td className="px-5 py-3.5">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1 w-fit border ${
+                  <td className="px-5 py-4 align-middle">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1.5 w-fit border ${
                       user.status === 'rejected'
                         ? 'bg-red-50 text-red-700 border-red-200'
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     }`}>
-                      <CheckCircle2 size={13} />
+                      <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'rejected' ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`} />
                       {user.status === 'rejected' ? 'ระงับ' : 'ใช้งานได้'}
                     </span>
                   </td>
 
                   {/* Actions */}
-                  <td className="px-5 py-3.5 text-right">
+                  <td className="px-5 py-4 text-right align-middle">
                     {editingId === user.id ? (
                       <div className="flex items-center justify-end gap-1.5">
                         <button
