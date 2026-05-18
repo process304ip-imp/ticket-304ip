@@ -491,19 +491,51 @@ export function Leaderboard() {
           {recentFeedback.map((f) => (
             <div key={f.id} className="bg-white p-6 rounded-[2rem] shadow-lg border border-slate-100 flex flex-col justify-between hover:shadow-xl transition-shadow group">
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-0.5">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Star key={star} size={14} className={star <= f.score ? 'fill-amber-400 text-amber-400' : 'text-slate-100'} />
-                    ))}
-                  </div>
+                <div className="flex items-center justify-between mb-3 border-b border-slate-50 pb-2">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Customer Evaluation
+                  </span>
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                     {new Date(f.submitted_at).toLocaleDateString('th-TH')}
                   </span>
                 </div>
-                <p className="text-slate-700 font-bold leading-relaxed line-clamp-3 group-hover:line-clamp-none transition-all">
-                  "{f.fix_quality_comment || f.service_quality_comment || f.comment}"
-                </p>
+                
+                <div className="flex flex-col gap-1 text-[11px] font-black text-slate-500 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span>Repair Quality:</span>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star key={star} size={10} className={star <= (f.fix_quality_score || f.score) ? 'fill-amber-400 text-amber-400' : 'text-slate-100'} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Staff Service:</span>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star key={star} size={10} className={star <= (f.service_quality_score || f.score) ? 'fill-blue-400 text-blue-400' : 'text-slate-100'} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-slate-700 font-bold leading-relaxed line-clamp-4 group-hover:line-clamp-none transition-all space-y-1.5 mt-2">
+                  {f.fix_quality_comment && (
+                    <p className="text-xs">
+                      <span className="font-bold text-slate-500">ซ่อม:</span> "{f.fix_quality_comment}"
+                    </p>
+                  )}
+                  {f.service_quality_comment && (
+                    <p className="text-xs">
+                      <span className="font-bold text-slate-500">บริการ:</span> "{f.service_quality_comment}"
+                    </p>
+                  )}
+                  {!f.fix_quality_comment && !f.service_quality_comment && (
+                    <p className="text-xs">
+                      "{f.comment || 'ไม่มีข้อความเพิ่มเติม'}"
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="mt-6 pt-4 border-t border-slate-50 flex items-center gap-3">

@@ -561,9 +561,9 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
           {/* Display Feedback Summary if closed */}
           {ticket.status === 'Closed' && (ticket as any).ticket_feedback && (ticket as any).ticket_feedback.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex flex-col md:flex-row md:items-center gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1 shrink-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black text-amber-700 uppercase">Repair</span>
+                  <span className="text-[10px] font-black text-amber-700 uppercase w-12">Repair</span>
                   <div className="flex gap-0.5">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <Star 
@@ -575,7 +575,7 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black text-amber-700 uppercase">Service</span>
+                  <span className="text-[10px] font-black text-amber-700 uppercase w-12">Service</span>
                   <div className="flex gap-0.5">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <Star 
@@ -587,11 +587,23 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                   </div>
                 </div>
               </div>
-              <div className="flex-1">
+              <div className="flex-1 border-t md:border-t-0 md:border-l border-amber-200 pt-2 md:pt-0 md:pl-4">
                 <p className="text-xs font-black text-amber-700 uppercase tracking-tighter">CRM Confirmation Feedback</p>
-                <p className="text-sm text-amber-900 font-medium italic">
-                  { (ticket as any).ticket_feedback[0].fix_quality_comment || (ticket as any).ticket_feedback[0].service_quality_comment || 'ไม่มีข้อความเพิ่มเติม' }
-                </p>
+                <div className="space-y-1 mt-1">
+                  {(ticket as any).ticket_feedback[0].fix_quality_comment && (
+                    <p className="text-xs text-amber-900 font-medium italic">
+                      <span className="font-bold not-italic">งานซ่อม:</span> "{(ticket as any).ticket_feedback[0].fix_quality_comment}"
+                    </p>
+                  )}
+                  {(ticket as any).ticket_feedback[0].service_quality_comment && (
+                    <p className="text-xs text-amber-900 font-medium italic">
+                      <span className="font-bold not-italic">บริการ:</span> "{(ticket as any).ticket_feedback[0].service_quality_comment}"
+                    </p>
+                  )}
+                  {!(ticket as any).ticket_feedback[0].fix_quality_comment && !(ticket as any).ticket_feedback[0].service_quality_comment && (
+                    <p className="text-xs text-amber-900/60 font-medium italic">ไม่มีข้อความเพิ่มเติม</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -872,6 +884,78 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                       </div>
                     )}
                   </div>
+
+                  {/* Dedicated Customer Feedback Section */}
+                  {ticket.status === 'Closed' && (ticket as any).ticket_feedback && (ticket as any).ticket_feedback.length > 0 && (
+                    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-100 rounded-2xl p-6 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between border-b border-amber-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                            <Star size={18} className="fill-current" />
+                          </div>
+                          <div>
+                            <h4 className="font-black text-amber-950 text-base">
+                              {lang === 'TH' ? 'ความพึงพอใจและผลประเมินจากลูกค้า' : 'Customer Feedback Evaluation'}
+                            </h4>
+                            <p className="text-[10px] text-amber-700 font-bold uppercase tracking-widest">
+                              CRM & Technical Assessment
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold text-amber-600 bg-white px-3 py-1.5 rounded-full border border-amber-100 shadow-sm">
+                          {safeDate((ticket as any).ticket_feedback[0].submitted_at)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* 1. Repair Quality Feedback */}
+                        <div className="bg-white border border-amber-100 rounded-xl p-4 space-y-2.5 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-wider">
+                              {lang === 'TH' ? '1. คุณภาพงานซ่อม' : '1. Repair Quality'}
+                            </span>
+                            <div className="flex gap-0.5">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star 
+                                  key={star} 
+                                  size={14} 
+                                  className={star <= (ticket as any).ticket_feedback[0].fix_quality_score ? 'fill-amber-400 text-amber-400' : 'text-slate-200'} 
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-3 min-h-[60px] flex flex-col justify-center">
+                            <p className="text-sm font-semibold text-slate-800 italic">
+                              "{(ticket as any).ticket_feedback[0].fix_quality_comment || (lang === 'TH' ? 'ไม่มีความเห็นเพิ่มเติม' : 'No comments provided')}"
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 2. Service Quality Feedback */}
+                        <div className="bg-white border border-amber-100 rounded-xl p-4 space-y-2.5 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-wider">
+                              {lang === 'TH' ? '2. การบริการของเจ้าหน้าที่' : '2. Staff Service Quality'}
+                            </span>
+                            <div className="flex gap-0.5">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star 
+                                  key={star} 
+                                  size={14} 
+                                  className={star <= (ticket as any).ticket_feedback[0].service_quality_score ? 'fill-amber-400 text-amber-400' : 'text-slate-200'} 
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-3 min-h-[60px] flex flex-col justify-center">
+                            <p className="text-sm font-semibold text-slate-800 italic">
+                              "{(ticket as any).ticket_feedback[0].service_quality_comment || (lang === 'TH' ? 'ไม่มีความเห็นเพิ่มเติม' : 'No comments provided')}"
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 

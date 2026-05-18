@@ -601,9 +601,23 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
                         </div>
                       </div>
                     </div>
-                    <blockquote className="text-sm font-medium text-slate-700 leading-relaxed mb-4 italic">
-                      "{fb.fix_quality_comment || fb.service_quality_comment || fb.comment || (fb.score >= 4 ? 'ยอดเยี่ยมมากครับ' : 'ขอบคุณครับ')}"
-                    </blockquote>
+                    <div className="space-y-1.5 text-xs text-slate-700 font-semibold mb-4 italic">
+                      {fb.fix_quality_comment && (
+                        <p>
+                          <span className="font-bold text-slate-500 not-italic">งานซ่อม:</span> "{fb.fix_quality_comment}"
+                        </p>
+                      )}
+                      {fb.service_quality_comment && (
+                        <p>
+                          <span className="font-bold text-slate-500 not-italic">บริการ:</span> "{fb.service_quality_comment}"
+                        </p>
+                      )}
+                      {!fb.fix_quality_comment && !fb.service_quality_comment && (
+                        <p>
+                          "{fb.comment || (fb.score >= 4 ? 'ยอดเยี่ยมมากครับ' : 'ขอบคุณครับ')}"
+                        </p>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-50">
                       <div className="min-w-0">
                         <p className="text-[10px] font-black text-slate-900 truncate">
