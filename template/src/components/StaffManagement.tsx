@@ -12,6 +12,8 @@ import {
   Save,
   XCircle,
   Building2,
+  Search,
+  Filter,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { api, ResponseTeam } from '../lib/api';
@@ -41,6 +43,9 @@ export function StaffManagement() {
   const [editRole, setEditRole] = useState('');
   const [editTeams, setEditTeams] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [selectedTeam, setSelectedTeam] = useState('all');
   const { toast, confirm } = useToast();
 
   const fetchData = async () => {
@@ -174,6 +179,23 @@ export function StaffManagement() {
   const pendingStaff = staff.filter(s => s.status === 'pending' || s.role === 'pending');
   const activeStaff = staff.filter(s => s.status !== 'pending' && s.role !== 'pending');
 
+  const filteredActiveStaff = activeStaff.filter(user => {
+    const matchesSearch = searchTerm === '' || 
+      (user.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.emp_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (Array.isArray(user.department) 
+        ? user.department.some((d: string) => d.toLowerCase().includes(searchTerm.toLowerCase()))
+        : (user.department || '').toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const matchesRole = selectedRole === 'all' || user.role === selectedRole;
+
+    const matchesTeam = selectedTeam === 'all' || 
+      (user.teams && user.teams.includes(selectedTeam));
+
+    return matchesSearch && matchesRole && matchesTeam;
+  });
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -261,14 +283,82 @@ export function StaffManagement() {
       )}
 
       {/* Active Staff Table */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-fade-in">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-2">
             <ShieldCheck className="text-primary" size={20} />
             <h3 className="font-black text-slate-800">ทีมงานในระบบทั้งหมด</h3>
           </div>
-          <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">{activeStaff.length} คน</span>
+          <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+            {filteredActiveStaff.length !== activeStaff.length 
+              ? `${filteredActiveStaff.length} จาก ${activeStaff.length} คน` 
+              : `${activeStaff.length} คน`}
+          </span>
         </div>
+
+        {/* Filters Bar */}
+        <div className="p-4 border-b border-slate-100 bg-slate-50/20 flex flex-col sm:flex-row gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+            <input
+              type="text"
+              placeholder="ค้นหาชื่อ, อีเมล, รหัสพนักงาน, แผนก..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2.5">
+            {/* Role Filter Dropdown */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-sm">
+              <Filter className="text-slate-400" size={12} />
+              <span className="text-xs font-black text-slate-400">บทบาท:</span>
+              <select
+                value={selectedRole}
+                onChange={e => setSelectedRole(e.target.value)}
+                className="text-xs font-bold text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+              >
+                <option value="all">ทั้งหมด</option>
+                {ROLE_OPTIONS.filter(r => r.value !== 'customer').map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Team Filter Dropdown */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-sm">
+              <ShieldCheck className="text-slate-400" size={12} />
+              <span className="text-xs font-black text-slate-400">ทีมช่าง:</span>
+              <select
+                value={selectedTeam}
+                onChange={e => setSelectedTeam(e.target.value)}
+                className="text-xs font-bold text-slate-700 bg-transparent focus:outline-none cursor-pointer max-w-[150px]"
+              >
+                <option value="all">ทั้งหมด</option>
+                {responseTeams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Clear Button if any filter active */}
+            {(searchTerm || selectedRole !== 'all' || selectedTeam !== 'all') && (
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedRole('all');
+                  setSelectedTeam('all');
+                }}
+                className="text-xs font-black text-red-600 hover:text-red-700 hover:underline px-2"
+              >
+                ล้างตัวกรอง
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -282,13 +372,13 @@ export function StaffManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {activeStaff.length === 0 ? (
+              {filteredActiveStaff.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold">
-                    ยังไม่มีข้อมูลทีมงาน
+                    ไม่พบข้อมูลทีมงานที่ตรงตามเงื่อนไขตัวกรอง
                   </td>
                 </tr>
-              ) : activeStaff.map((user) => (
+              ) : filteredActiveStaff.map((user) => (
                 <tr key={user.id} className="hover:bg-slate-50/50 transition-colors group">
                   {/* Name + Photo + Email + EMP ID */}
                   <td className="px-5 py-4">
