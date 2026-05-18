@@ -527,6 +527,10 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
     ticket.ticket_affected_companies?.some(ac => ac.company_id === company.id)
   );
 
+  const visibleLogs = role === 'customer' 
+    ? localLogs.filter((log) => !log.is_internal) 
+    : localLogs;
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
@@ -873,8 +877,16 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-black text-primary text-base">บันทึกเหตุการณ์นาทีต่อนาที</h3>
-                      <p className="text-xs text-slate-600 font-bold mt-1">ใช้สำหรับเคส Facility เช่น ไฟไหม้ น้ำเสียล้น หรือการเรียกรถดับเพลิง</p>
+                      <h3 className="font-black text-primary text-base">
+                        {role === 'customer' 
+                          ? (lang === 'TH' ? 'ประวัติการดำเนินการ' : 'Activity History') 
+                          : (lang === 'TH' ? 'บันทึกเหตุการณ์นาทีต่อนาที' : 'Minute-by-Minute Log')}
+                      </h3>
+                      <p className="text-xs text-slate-600 font-bold mt-1">
+                        {role === 'customer'
+                          ? (lang === 'TH' ? 'บันทึกความคืบหน้าและการปฏิบัติงานจริงของทีมช่างและเจ้าหน้าที่' : 'Detailed log of progress and operations on your ticket')
+                          : (lang === 'TH' ? 'ใช้สำหรับเคส Facility เช่น ไฟไหม้ น้ำเสียล้น หรือการเรียกรถดับเพลิง' : 'Used for facility cases such as fire, wastewater overflow, or firefighting coordination')}
+                      </p>
                     </div>
                     {(role === 'technician' || role === 'crm' || role === 'admin') && ticket.status !== 'Closed' && (
                       <button onClick={() => setIsLogModalOpen(true)} className="px-4 py-2 bg-primary text-white rounded-lg text-xs font-black flex items-center gap-2">
@@ -885,13 +897,15 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                   </div>
                   
                   <div className="space-y-4">
-                    {localLogs.length === 0 ? (
-                      <p className="text-center py-10 text-slate-400 text-sm">ยังไม่มีบันทึกเหตุการณ์</p>
-                    ) : localLogs.map((log, index) => {
+                    {visibleLogs.length === 0 ? (
+                      <p className="text-center py-10 text-slate-400 text-sm">
+                        {lang === 'TH' ? 'ยังไม่มีประวัติการดำเนินการ' : 'No activity history yet'}
+                      </p>
+                    ) : visibleLogs.map((log, index) => {
                       const isSystemUpdate = log.message.startsWith('[System Update]');
                       return (
                       <div key={log.id} className={`flex gap-4 relative ${isSystemUpdate ? 'py-1' : ''}`}>
-                        {index < localLogs.length - 1 && <div className="absolute left-[13px] top-8 bottom-[-18px] w-0.5 bg-slate-200" />}
+                        {index < visibleLogs.length - 1 && <div className="absolute left-[13px] top-8 bottom-[-18px] w-0.5 bg-slate-200" />}
                         <div className={`rounded-full overflow-hidden flex items-center justify-center shrink-0 z-10 border ${isSystemUpdate ? 'w-7 h-7 bg-white border-slate-200 text-slate-400' : 'w-7 h-7 bg-slate-200 border-slate-200'}`}>
                           {isSystemUpdate ? (
                             <Activity size={14} />
@@ -910,23 +924,36 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                         {isSystemUpdate ? (
                           <div className="flex-1 py-1">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
-                              <p className="font-bold text-slate-500 text-xs">
-                                System Audit by {log.author_name}
-                                {(log as any).author_profile?.role && (
-                                  <span className="ml-1 text-[9px] font-black uppercase text-slate-400">({(log as any).author_profile.role})</span>
-                                )}
-                              </p>
+                              {role === 'customer' ? (
+                                <p className="font-black text-primary text-xs flex items-center gap-1">
+                                  <Activity size={12} className="text-primary animate-pulse" />
+                                  {lang === 'TH' ? 'อัปเดตสถานะจากระบบ' : 'System Progress Update'}
+                                </p>
+                              ) : (
+                                <p className="font-bold text-slate-500 text-xs">
+                                  System Audit by {log.author_name}
+                                  {(log as any).author_profile?.role && (
+                                    <span className="ml-1 text-[9px] font-black uppercase text-slate-400">({(log as any).author_profile.role})</span>
+                                  )}
+                                </p>
+                              )}
                               <span className="text-[10px] text-slate-400 font-medium">
                                 {safeDate(log.timestamp)}
                               </span>
                             </div>
                             <div className="space-y-1">
-                              {log.message.replace('[System Update] ', '').split('\n').map((change, i) => (
-                                <p key={i} className="text-xs text-slate-600 font-medium">
-                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 mr-2 opacity-70"></span>
-                                  {change}
+                              {role === 'customer' ? (
+                                <p className="text-xs text-slate-700 font-bold bg-slate-50 border-l-2 border-indigo-400 pl-2.5 py-1">
+                                  {formatSystemUpdate(log.message, role, lang)}
                                 </p>
-                              ))}
+                              ) : (
+                                log.message.replace('[System Update] ', '').split('\n').map((change, i) => (
+                                  <p key={i} className="text-xs text-slate-600 font-medium">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 mr-2 opacity-70"></span>
+                                    {change}
+                                  </p>
+                                ))
+                              )}
                             </div>
                           </div>
                         ) : (
@@ -936,7 +963,14 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                               <p className="font-black text-primary text-sm">
                                 {log.author_name}
                                 {(log as any).author_profile?.role && (
-                                  <span className="ml-2 text-[10px] text-slate-400 font-bold uppercase">{(log as any).author_profile.role}</span>
+                                  <span className="ml-2 text-[10px] text-slate-400 font-bold uppercase">
+                                    {role === 'customer' 
+                                      ? (((log as any).author_profile.role === 'technician' ? (lang === 'TH' ? 'ทีมช่างเทคนิค' : 'Technician Team')
+                                         : (log as any).author_profile.role === 'crm' ? (lang === 'TH' ? 'เจ้าหน้าที่ CRM' : 'CRM Support')
+                                         : (log as any).author_profile.role === 'admin' ? (lang === 'TH' ? 'ผู้ดูแลระบบ' : 'Administrator')
+                                         : (lang === 'TH' ? 'ผู้แจ้งเรื่อง' : 'Reporter')))
+                                      : (log as any).author_profile.role}
+                                  </span>
                                 )}
                               </p>
                               {log.is_internal && (
@@ -1533,4 +1567,59 @@ function getStatusDisplay(status: string, role: string, lang: 'TH' | 'EN' = 'TH'
     }
   }
   return status;
+}
+
+function formatSystemUpdate(message: string, role: string, lang: 'TH' | 'EN') {
+  const cleanMsg = message.replace('[System Update] ', '');
+  if (role !== 'customer') {
+    return cleanMsg;
+  }
+  
+  if (cleanMsg.includes('Status changed:')) {
+    const match = cleanMsg.match(/Status changed:\s*(.*?)\s*->\s*(.*)/);
+    if (match) {
+      const fromStatus = match[1].trim();
+      const toStatus = match[2].trim();
+      const fromDisplay = getStatusDisplay(fromStatus, 'customer', lang);
+      const toDisplay = getStatusDisplay(toStatus, 'customer', lang);
+      
+      if (lang === 'TH') {
+        return `เปลี่ยนสถานะตั๋ว: จาก "${fromDisplay}" เป็น "${toDisplay}"`;
+      } else {
+        return `Ticket status updated: from "${fromDisplay}" to "${toDisplay}"`;
+      }
+    }
+  }
+  
+  if (cleanMsg.includes('Assignee changed:')) {
+    const match = cleanMsg.match(/Assignee changed:\s*(.*?)\s*->\s*(.*)/);
+    if (match) {
+      const assigneeName = match[2].trim();
+      if (assigneeName === '-' || assigneeName === 'none') {
+        return lang === 'TH' ? 'ยกเลิกการมอบหมายงาน' : 'Ticket unassigned';
+      }
+      const cleanAssignee = assigneeName.replace(/\s*\(.*?\)/, '');
+      if (lang === 'TH') {
+        return `มอบหมายงานให้ทีมช่าง: คุณ ${cleanAssignee} เรียบร้อยแล้ว`;
+      } else {
+        return `Assigned to technician: ${cleanAssignee}`;
+      }
+    }
+  }
+
+  if (lang === 'TH') {
+    return cleanMsg
+      .replace('Priority changed:', 'ปรับเปลี่ยนระดับความสำคัญ:')
+      .replace('Category changed:', 'ปรับประเภทบริการ:')
+      .replace('Subcategory changed:', 'ปรับประเภทบริการย่อย:')
+      .replace('Duration changed:', 'ปรับระยะเวลาแก้ไข:')
+      .replace('Impact changed:', 'ปรับระดับผลกระทบ:')
+      .replace('Auto-close countdown started', 'เริ่มนับถอยหลังปิดงานอัตโนมัติ')
+      .replace('Auto-close timer canceled', 'ยกเลิกการนับถอยหลังปิดงานอัตโนมัติ')
+      .replace('Ticket reopened', 'เปิดตั๋วนี้อีกครั้งเพื่อดำเนินการแก้ไขใหม่')
+      .replace('Ticket closed with rating', 'ปิดตั๋วเรียบร้อยพร้อมการประเมินดาว')
+      .replace('Feedback submitted', 'ส่งคำติชม/คะแนนประเมินเรียบร้อยแล้ว');
+  }
+
+  return cleanMsg;
 }
