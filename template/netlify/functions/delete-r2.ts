@@ -9,6 +9,8 @@ const r2 = new S3Client({
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   },
   forcePathStyle: true, // Required for R2
+  requestChecksumCalculation: 'WHEN_REQUIRED' as any,
+  responseChecksumValidation: 'WHEN_REQUIRED' as any,
 });
 
 export const handler: Handler = async (event) => {

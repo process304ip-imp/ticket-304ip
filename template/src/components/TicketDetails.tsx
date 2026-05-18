@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import imageCompression from 'browser-image-compression';
 import {
   Camera,
@@ -22,7 +22,9 @@ import {
   Zap,
   Droplets,
   Building2,
-  User
+  User,
+  Activity,
+  AlertCircle
 } from 'lucide-react';
 import { MapContainer, Marker, TileLayer, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -33,7 +35,9 @@ import { statusColors, categoryColors, TicketCategory } from '../data';
 import { Loader2 } from 'lucide-react';
 import { Role } from '../App';
 import { useToast } from './Toast';
+import { uploadToR2, uploadWithProgress, deleteFromR2, detectStorageProvider } from '../lib/r2-upload';
 import { useAuth } from '../hooks/useAuth';
+import { formatPhoneNumber } from '../lib/utils';
 
 const detailPin = L.divIcon({
   className: 'custom-pin',
@@ -42,6 +46,24 @@ const detailPin = L.divIcon({
   </div>`,
   iconSize: [0, 0],
 });
+
+/**
+ * Helper to get duration of a video file in seconds
+ */
+const getVideoDuration = (file: File): Promise<number> => {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      window.URL.revokeObjectURL(video.src);
+      resolve(video.duration);
+    };
+    video.onerror = () => {
+      resolve(0); // If fails to load or not supported, return 0
+    };
+    video.src = URL.createObjectURL(file);
+  });
+};
 
 interface TicketDetailsProps {
   ticketId: string | null;
@@ -67,14 +89,42 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
     fixComment: '', 
     serviceComment: '' 
   });
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [localLogs, setLocalLogs] = useState<TicketLog[]>([]);
   
-  const [isUploading, setIsUploading] = useState(false);
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  // Custom draft attachment states for progressive pre-uploads
+  const [logAttachments, setLogAttachments] = useState<{
+    id: string;
+    file: File;
+    previewUrl: string;
+    status: 'compressing' | 'uploading' | 'done' | 'error';
+    progress: number;
+    publicUrl?: string;
+    error?: string;
+  }[]>([]);
+  const [logDraftId, setLogDraftId] = useState<string>('');
   const [isInternalLog, setIsInternalLog] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isLogModalOpen) {
+      const now = new Date();
+      const yy = String(now.getFullYear()).substring(2, 4);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const randomStr = Math.random().toString(36).substring(2, 6);
+      const generatedDraftId = `draft-${yy}${mm}${dd}-${randomStr}`;
+      setLogDraftId(generatedDraftId);
+      setLogAttachments([]);
+    } else {
+      // Cleanup previews when closing
+      logAttachments.forEach(att => {
+        if (att.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(att.previewUrl);
+        }
+      });
+    }
+  }, [isLogModalOpen]);
   
   const isTechnician = role === 'technician';
   const isCustomer = role === 'customer';
@@ -245,28 +295,10 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
   const handleAddLog = async () => {
     if (!logText.trim() || !ticket) return;
     try {
-      setIsUploading(true);
-      setUploadProgress(0);
-      let mediaUrls: string[] = [];
-
-      if (attachedFiles.length > 0) {
-        const options = { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true };
-        let count = 0;
-        for (const file of attachedFiles) {
-          let fileToUpload = file;
-          // Only compress images
-          if (file.type.startsWith('image/')) {
-            fileToUpload = await imageCompression(file, options);
-          }
-          
-          // Progress simulation for small files or real for large if API supports it
-          // For now we just increment based on file count
-          const url = await api.storage.uploadAttachment(ticket.id, fileToUpload);
-          mediaUrls.push(url);
-          count++;
-          setUploadProgress((count / attachedFiles.length) * 100);
-        }
-      }
+      // 1. Gather pre-uploaded URLs
+      const mediaUrls = logAttachments
+        .filter(att => att.status === 'done' && att.publicUrl)
+        .map(att => att.publicUrl as string);
 
       await api.tickets.addLog({
         ticket_id: ticket.id,
@@ -279,8 +311,16 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
         media_urls: mediaUrls,
         is_internal: isInternalLog
       });
+
+      // Cleanup local blob objectURLs
+      logAttachments.forEach(att => {
+        if (att.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(att.previewUrl);
+        }
+      });
+
       setLogText('');
-      setAttachedFiles([]);
+      setLogAttachments([]);
       setIsInternalLog(false);
       setIsLogModalOpen(false);
       toast.success('บันทึก Log สำเร็จ', `เพิ่ม Log ให้ ${ticket.id} เรียบร้อยแล้ว`);
@@ -289,9 +329,6 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
     } catch (error) {
       toast.error('ไม่สามารถบันทึก Log ได้', 'กรุณาลองใหม่อีกครั้ง');
       onAddNotification('Error', 'ไม่สามารถบันทึก Log ได้', 'system');
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
     }
   };
 
@@ -339,11 +376,98 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      setAttachedFiles(prev => [...prev, ...files].slice(0, 2));
+  // Triggered on file input selection
+  const handleLogFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !ticket) return;
+    const files = Array.from(e.target.files) as File[];
+    
+    for (const file of files) {
+      const fileId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const isImg = file.type.startsWith('image/');
+      const isVid = file.type.startsWith('video/');
+      const previewUrl = URL.createObjectURL(file);
+
+      // Create initial local attachment state
+      const newAttachment = {
+        id: fileId,
+        file,
+        previewUrl,
+        status: (isImg ? 'compressing' : 'uploading') as any,
+        progress: 0
+      };
+
+      setLogAttachments(prev => [...prev, newAttachment]);
+
+      // 1. Validation for Videos (5 minutes maximum length, 50MB maximum size)
+      if (isVid) {
+        if (file.size > 50 * 1024 * 1024) {
+          toast.warning('ไฟล์มีขนาดใหญ่เกินกำหนด', 'วิดีโอควรมีขนาดไม่เกิน 50MB');
+          setLogAttachments(prev => prev.map(a => a.id === fileId ? { ...a, status: 'error', error: 'ไฟล์ใหญ่เกิน 50MB' } : a));
+          continue;
+        }
+
+        const duration = await getVideoDuration(file);
+        if (duration > 300) {
+          toast.warning('ความยาววิดีโอเกินกำหนด', 'วิดีโอต้องยาวไม่เกิน 5 นาที (300 วินาที)');
+          setLogAttachments(prev => prev.map(a => a.id === fileId ? { ...a, status: 'error', error: 'ความยาวเกิน 5 นาที' } : a));
+          continue;
+        }
+      }
+
+      // 2. Compression for Images
+      let fileToUpload = file;
+      if (isImg) {
+        try {
+          const options = { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true };
+          fileToUpload = await imageCompression(file, options);
+          setLogAttachments(prev => prev.map(a => a.id === fileId ? { ...a, status: 'uploading' } : a));
+        } catch (err) {
+          console.error('Compression failed:', err);
+          setLogAttachments(prev => prev.map(a => a.id === fileId ? { ...a, status: 'uploading' } : a));
+        }
+      }
+
+      // 3. Progressive R2 upload directly to presigned URL
+      try {
+        const publicUrl = await uploadWithProgress(fileToUpload, ticket.id, (percent) => {
+          setLogAttachments(prev => prev.map(a => a.id === fileId ? { ...a, progress: percent } : a));
+        });
+
+        // Set attachment status to 'done'
+        setLogAttachments(prev => prev.map(a => a.id === fileId ? { ...a, status: 'done', progress: 100, publicUrl } : a));
+      } catch (err: any) {
+        console.error('R2 upload failed:', err);
+        setLogAttachments(prev => prev.map(a => a.id === fileId ? { ...a, status: 'error', error: err.message || 'อัปโหลดล้มเหลว' } : a));
+      }
     }
+
+    // Reset input value so same files can be chosen again if deleted
+    if (e.target.value) {
+      e.target.value = '';
+    }
+  };
+
+  // Triggered when deleting a pending/uploaded item
+  const removeLogAttachment = async (id: string) => {
+    const target = logAttachments.find(a => a.id === id);
+    if (!target) return;
+
+    // Revoke object URL
+    if (target.previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(target.previewUrl);
+    }
+
+    // Delete from R2 if uploaded successfully
+    if (target.status === 'done' && target.publicUrl) {
+      try {
+        await deleteFromR2(target.publicUrl);
+        toast.info('ลบไฟล์แล้ว', 'ลบไฟล์ออกจาก Storage สำเร็จ');
+      } catch (err) {
+        console.error('Failed to delete file from R2:', err);
+      }
+    }
+
+    setLogAttachments(prev => prev.filter(a => a.id !== id));
   };
 
   if (loading || !ticket) {
@@ -455,13 +579,29 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
       </section>
 
       <section className="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-        <div className="flex items-center gap-3 text-indigo-900">
-          <div className="shrink-0 p-2 bg-indigo-100 rounded-lg">
-            <Crosshair size={20} className="text-indigo-600" />
+        <div className="flex flex-col sm:flex-row gap-6">
+          <div className="flex items-center gap-3 text-indigo-900">
+            <div className="shrink-0 p-2 bg-indigo-100 rounded-lg">
+              <Crosshair size={20} className="text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-0.5">ทีมรับผิดชอบ (Assignee)</p>
+              <p className="font-black text-base">{ticket.assignee || 'ยังไม่มีการมอบหมาย'}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-0.5">ทีมรับผิดชอบ (Assignee)</p>
-            <p className="font-black text-base">{ticket.assignee || 'ยังไม่มีการมอบหมาย'}</p>
+          
+          <div className="flex items-center gap-3 text-indigo-900">
+            <div className="shrink-0 p-2 bg-indigo-100 rounded-lg">
+              <User size={20} className="text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-0.5">ผู้ดูแล (Response)</p>
+              <p className="font-black text-base">
+                {ticket.responder_id 
+                  ? ((ticket as any).responder?.full_name || 'System') 
+                  : ((ticket as any).creator?.role !== 'customer' ? ((ticket as any).creator?.full_name || 'System') : 'Unassigned')}
+              </p>
+            </div>
           </div>
         </div>
         
@@ -543,7 +683,7 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                     <InfoBlock label="Service Type / ประเภท" value={ticket.type || '-'} />
                     <InfoBlock label="Channel / ช่องทาง" value={ticket.channel || '-'} />
                     <InfoBlock label="Contact / ผู้ติดต่อ" value={ticket.contact_name || '-'} />
-                    <InfoBlock label="Phone / เบอร์ติดต่อ" value={ticket.contact_phone || '-'} />
+                    <InfoBlock label="Phone / เบอร์ติดต่อ" value={formatPhoneNumber(ticket.contact_phone) || '-'} />
                     <InfoBlock label="Created / วันที่สร้าง" value={safeDate(ticket.created_at)} />
                     <InfoBlock label="Duration / ระยะเวลา" value={ticket.duration_min ? `${ticket.duration_min} นาที` : '-'} />
                     <InfoBlock label="Impact / รัศมี" value={ticket.impact_radius_meters ? `${ticket.impact_radius_meters.toLocaleString()} เมตร` : '-'} />
@@ -587,11 +727,15 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                   <div className="space-y-4">
                     {localLogs.length === 0 ? (
                       <p className="text-center py-10 text-slate-400 text-sm">ยังไม่มีบันทึกเหตุการณ์</p>
-                    ) : localLogs.map((log, index) => (
-                      <div key={log.id} className="flex gap-4 relative">
+                    ) : localLogs.map((log, index) => {
+                      const isSystemUpdate = log.message.startsWith('[System Update]');
+                      return (
+                      <div key={log.id} className={`flex gap-4 relative ${isSystemUpdate ? 'py-1' : ''}`}>
                         {index < localLogs.length - 1 && <div className="absolute left-[13px] top-8 bottom-[-18px] w-0.5 bg-slate-200" />}
-                        <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center shrink-0 z-10 border border-slate-200">
-                          {(log as any).author_profile?.emp_id ? (
+                        <div className={`rounded-full overflow-hidden flex items-center justify-center shrink-0 z-10 border ${isSystemUpdate ? 'w-7 h-7 bg-white border-slate-200 text-slate-400' : 'w-7 h-7 bg-slate-200 border-slate-200'}`}>
+                          {isSystemUpdate ? (
+                            <Activity size={14} />
+                          ) : (log as any).author_profile?.emp_id ? (
                             <img 
                               src={getAvatarUrl((log as any).author_profile.emp_id)!} 
                               alt="" 
@@ -603,6 +747,29 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                             </div>
                           )}
                         </div>
+                        {isSystemUpdate ? (
+                          <div className="flex-1 py-1">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
+                              <p className="font-bold text-slate-500 text-xs">
+                                System Audit by {log.author_name}
+                                {(log as any).author_profile?.role && (
+                                  <span className="ml-1 text-[9px] font-black uppercase text-slate-400">({(log as any).author_profile.role})</span>
+                                )}
+                              </p>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {safeDate(log.timestamp)}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              {log.message.replace('[System Update] ', '').split('\n').map((change, i) => (
+                                <p key={i} className="text-xs text-slate-600 font-medium">
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 mr-2 opacity-70"></span>
+                                  {change}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
                         <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4">
                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2">
@@ -651,27 +818,57 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
                             </div>
                           )}
                         </div>
+                        )}
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </div>
               ) : (
                 <div className="space-y-6">
                   {affectedCompanies.length > 0 ? (
-                    <div className="bg-red-50 border border-red-100 rounded-xl p-6">
-                      <h4 className="text-sm font-black text-red-800 mb-4">บริษัทที่ได้รับผลกระทบจากเหตุการณ์นี้</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {affectedCompanies.map((company) => (
-                          <div key={company.id} className="bg-white border border-red-100 rounded-lg p-3 flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center font-black text-xs shrink-0">
-                              {company.name.charAt(0)}
-                            </div>
-                            <span className="text-sm font-bold text-slate-700 truncate">
-                              {company.name}
-                            </span>
+                    <div className="space-y-6">
+                      {Object.entries(
+                        affectedCompanies.reduce((acc, company) => {
+                          const area = company.area || 'ไม่ระบุโซน';
+                          if (!acc[area]) acc[area] = [];
+                          acc[area].push(company);
+                          return acc;
+                        }, {} as Record<string, typeof affectedCompanies>)
+                      ).map(([area, rawCompaniesInArea]) => {
+                        const companiesInArea = rawCompaniesInArea as typeof affectedCompanies;
+                        return (
+                          <div key={area} className="bg-red-50 border border-red-100 rounded-xl p-6">
+                            <h4 className="text-sm font-black text-red-800 mb-4 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                              โซน: {area} ({companiesInArea.length} บริษัท)
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {companiesInArea.map((company) => (
+                              <div key={company.id} className="bg-white border border-red-100 rounded-xl p-4 flex flex-col gap-2">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center font-black text-xs shrink-0">
+                                    {company.name.charAt(0)}
+                                  </div>
+                                  <span className="text-sm font-bold text-slate-800 truncate">
+                                    {company.name}
+                                  </span>
+                                </div>
+                                <div className="pl-11 space-y-1">
+                                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                                    <User size={12} className="shrink-0" />
+                                    <span className="truncate">{company.contact_name || 'ไม่ระบุผู้ติดต่อ'}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                                    <Phone size={12} className="shrink-0" />
+                                    <span>{company.phone || '-'}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-20 bg-slate-50 rounded-xl border border-dashed border-slate-200">
@@ -703,7 +900,7 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
             <p className="font-black text-slate-900">{ticket.contact_name || 'ไม่ระบุ'}</p>
             <div className="flex items-center gap-2 text-sm text-slate-600 mt-2">
               <Phone size={15} />
-              {ticket.contact_phone || 'ไม่ระบุ'}
+              {formatPhoneNumber(ticket.contact_phone) || 'ไม่ระบุ'}
             </div>
           </div>
 
@@ -803,50 +1000,144 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
             <textarea value={logText} onChange={(event) => setLogText(event.target.value)} rows={5} className="w-full form-field resize-none" placeholder="เช่น เวลา 18.28 น. ทีม Area Inspector ตรวจสอบพบว่า..." />
             
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <input type="file" accept="image/*,video/*" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                {attachedFiles.length < 3 && (
-                  <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 transition-colors text-slate-700 rounded-lg text-xs font-bold flex items-center gap-2">
-                    <Camera size={14} />
-                    แนบรูป/วิดีโอ {attachedFiles.length > 0 ? '(เพิ่ม)' : ''}
-                  </button>
-                )}
+              <div className="flex flex-col gap-2">
+                <input 
+                  type="file" 
+                  accept="image/*,video/*" 
+                  multiple 
+                  ref={fileInputRef} 
+                  onChange={handleLogFileChange} 
+                  className="hidden" 
+                />
                 
-                {attachedFiles.map((file, idx) => (
-                  <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-lg">
-                    {file.type.startsWith('video/') ? <Video size={12} className="text-primary" /> : <Camera size={12} className="text-slate-400" />}
-                    <span className="text-[10px] font-bold text-slate-500 truncate max-w-[100px]">{file.name}</span>
-                    <button onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-500">
-                      <X size={14} />
+                {logAttachments.length < 5 && (
+                  <div>
+                    <button 
+                      onClick={() => fileInputRef.current?.click()} 
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 transition-colors text-slate-700 rounded-lg text-xs font-extrabold flex items-center gap-2"
+                    >
+                      <Camera size={14} />
+                      แนบไฟล์ภาพหรือวิดีโอ {logAttachments.length > 0 ? '(แนบเพิ่ม)' : ''}
                     </button>
+                    <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                      * รองรับไฟล์ภาพและวิดีโอ (จำกัดวิดีโอไม่เกิน 50MB และความยาวไม่เกิน 5 นาทีต่อคลิป)
+                    </p>
                   </div>
-                ))}
+                )}
+
+                {logAttachments.length > 0 && (
+                  <div className="grid grid-cols-3 gap-3 mt-2">
+                    {logAttachments.map((item) => {
+                      const isVid = item.file.type.startsWith('video/');
+                      return (
+                        <div key={item.id} className="relative aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-50 group flex flex-col items-center justify-center">
+                          {/* Media preview */}
+                          {isVid ? (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white relative">
+                              <Video size={24} className="text-slate-400 mb-1" />
+                              <span className="text-[9px] font-medium truncate max-w-[90%] px-1">{item.file.name}</span>
+                            </div>
+                          ) : (
+                            <img 
+                              src={item.previewUrl} 
+                              alt="preview" 
+                              className="w-full h-full object-cover" 
+                            />
+                          )}
+
+                          {/* Status overlays */}
+                          {item.status === 'compressing' && (
+                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white text-[10px] font-bold">
+                              <Loader2 className="animate-spin text-white mb-1" size={16} />
+                              <span>กำลังบีบอัด...</span>
+                            </div>
+                          )}
+
+                          {item.status === 'uploading' && (
+                            <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white text-[10px] font-bold">
+                              <div className="relative w-10 h-10 flex items-center justify-center mb-1">
+                                <svg className="absolute w-full h-full transform -rotate-90">
+                                  <circle cx="20" cy="20" r="16" stroke="rgba(255,255,255,0.2)" strokeWidth="3" fill="transparent" />
+                                  <circle 
+                                    cx="20" 
+                                    cy="20" 
+                                    r="16" 
+                                    stroke="#f59e0b" 
+                                    strokeWidth="3" 
+                                    fill="transparent" 
+                                    strokeDasharray={100} 
+                                    strokeDashoffset={100 - item.progress} 
+                                  />
+                                </svg>
+                                <span className="text-[9px] font-extrabold text-amber-400">{item.progress}%</span>
+                              </div>
+                              <span>กำลังอัปโหลด...</span>
+                            </div>
+                          )}
+
+                          {item.status === 'error' && (
+                            <div className="absolute inset-0 bg-red-50/95 flex flex-col items-center justify-center text-red-600 text-[9px] font-bold p-1 text-center">
+                              <AlertCircle size={16} className="mb-0.5" />
+                              <span className="line-clamp-2">{item.error || 'ล้มเหลว'}</span>
+                            </div>
+                          )}
+
+                          {/* Delete button */}
+                          <button 
+                            onClick={() => removeLogAttachment(item.id)} 
+                            className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-600 transition-colors text-white rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              {isUploading && (
-                <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2">
-                  <div 
-                    className="bg-primary h-1.5 rounded-full transition-all duration-300" 
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-              )}
-
               {role !== 'customer' && (
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <div className={`w-10 h-5 rounded-full relative transition-colors ${isInternalLog ? 'bg-amber-500' : 'bg-slate-200'}`}>
-                    <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${isInternalLog ? 'translate-x-5' : ''}`} />
-                  </div>
-                  <input type="checkbox" className="hidden" checked={isInternalLog} onChange={(e) => setIsInternalLog(e.target.checked)} />
-                  <span className="text-xs font-black text-slate-600 group-hover:text-slate-900 transition-colors">Internal Note (ลูกค้ามองไม่เห็น)</span>
-                </label>
+                <div className="pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer group">
+                    <div className={`w-10 h-5 rounded-full relative transition-colors ${isInternalLog ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                      <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${isInternalLog ? 'translate-x-5' : ''}`} />
+                    </div>
+                    <input type="checkbox" className="hidden" checked={isInternalLog} onChange={(e) => setIsInternalLog(e.target.checked)} />
+                    <span className="text-xs font-black text-slate-600 group-hover:text-slate-900 transition-colors">Internal Note (ลูกค้ามองไม่เห็น)</span>
+                  </label>
+                </div>
               )}
             </div>
 
-            <button onClick={handleAddLog} disabled={isUploading || !logText.trim()} className="w-full py-3 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-              {isUploading ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-              {isUploading ? 'กำลังอัปโหลดและบันทึก...' : 'บันทึก Log'}
-            </button>
+            {(() => {
+              const isUploading = logAttachments.some(a => a.status === 'uploading');
+              const isCompressing = logAttachments.some(a => a.status === 'compressing');
+              const isBlocked = isUploading || isCompressing || !logText.trim();
+              
+              let buttonText = 'บันทึก Log';
+              if (isCompressing) {
+                buttonText = 'กำลังบีบอัดไฟล์ภาพ...';
+              } else if (isUploading) {
+                const total = logAttachments.length;
+                const uploaded = logAttachments.filter(a => a.status === 'done').length;
+                buttonText = `กำลังอัปโหลดไฟล์ (${uploaded}/${total})...`;
+              }
+
+              return (
+                <button 
+                  onClick={handleAddLog} 
+                  disabled={isBlocked} 
+                  className="w-full py-3 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-primary-dark transition-all shadow-md shadow-primary/10 active:scale-[0.98]"
+                >
+                  {isCompressing || isUploading ? (
+                    <Loader2 className="animate-spin" size={18} />
+                  ) : (
+                    <Send size={18} />
+                  )}
+                  {buttonText}
+                </button>
+              );
+            })()}
           </div>
         </Modal>
       )}

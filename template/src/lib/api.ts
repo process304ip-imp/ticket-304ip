@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { Database } from '../types/supabase';
-import { uploadToR2, deleteFromR2, detectStorageProvider } from './r2-upload';
+import { uploadToR2, uploadWithProgress, deleteFromR2, detectStorageProvider, finalizeR2Attachments } from './r2-upload';
 
 export type Ticket = Database['public']['Tables']['tickets']['Row'];
 export type TicketLog = Database['public']['Tables']['ticket_logs']['Row'];
@@ -52,6 +52,15 @@ const isTicketAssignedToProfile = (ticket: any, teams: ResponseTeam[], profile?:
   // Check if any of user's departments match any of the team's attributes
   return profileDepts.some(dept => teamAttributes.includes(dept));
 };
+
+/**
+ * Terminal/active ticket status helper — used to decide if a team can be released.
+ * A team is "busy" while any assigned ticket is still in a non-terminal state.
+ * Terminal states: 'Closed' only. All others (including Resolved variants) are active
+ * because they may still require CRM verification or customer feedback.
+ */
+const TERMINAL_STATUSES = new Set(['Closed']);
+const isTicketActive = (status: string) => !TERMINAL_STATUSES.has(status);
 
 export const api = {
   tickets: {
@@ -160,10 +169,28 @@ export const api = {
       return (data && data.length > 0) ? data[0] : null;
     },
     async delete(id: string) {
-      // Fetch logs to extract media urls
+      // ── 1. Release assigned team BEFORE deleting (prevent team stuck at 'busy') ──
+      try {
+        const ticketToDelete = await api.tickets.get(id) as any;
+        if (ticketToDelete?.assignee) {
+          const teams = await api.teams.list();
+          const team = teams.find((t) => t.name === ticketToDelete.assignee);
+          if (team) {
+            const otherActive = (await api.tickets.list()).filter((t: any) =>
+              t.id !== id && t.assignee === ticketToDelete.assignee && isTicketActive(t.status)
+            );
+            if (otherActive.length === 0) {
+              await api.teams.update(team.id, { status: 'available' });
+            }
+          }
+        }
+      } catch (releaseErr) {
+        console.warn('[Delete] Could not auto-release team (non-critical):', releaseErr);
+      }
+
+      // ── 2. Collect all media URLs from logs (covers both creation & log attachments) ──
       const { data: logs } = await supabase.from('ticket_logs').select('media_urls').eq('ticket_id', id);
 
-      // Separate files by storage provider (Hybrid mode)
       const supabasePaths: string[] = [];
       const r2Urls: string[] = [];
 
@@ -181,22 +208,20 @@ export const api = {
         });
       }
 
-      // Delete Supabase Storage files (legacy)
-      if (supabasePaths.length > 0) {
-        await supabase.storage.from('ticket-attachments').remove(supabasePaths);
-      }
+      // ── 3. Delete files in parallel for speed ──
+      await Promise.all([
+        supabasePaths.length > 0
+          ? supabase.storage.from('ticket-attachments').remove(supabasePaths)
+          : Promise.resolve(),
+        ...r2Urls.map(url =>
+          deleteFromR2(url).catch(err =>
+            console.warn('[Delete] R2 file delete failed (non-critical):', url, err)
+          )
+        ),
+      ]);
 
-      // Delete R2 files
-      for (const url of r2Urls) {
-        await deleteFromR2(url).catch(err =>
-          console.warn('[Delete] R2 file delete failed (non-critical):', url, err)
-        );
-      }
-
-      // Delete logs first just in case there is no cascade set up
+      // ── 4. Delete child rows then ticket ──
       await supabase.from('ticket_logs').delete().eq('ticket_id', id);
-
-      // Delete the ticket
       const { error } = await supabase.from('tickets').delete().eq('id', id);
       if (error) throw error;
     },
@@ -304,16 +329,20 @@ export const api = {
         id: actor?.id
       });
 
+      // Mark new team as busy
       if (team && team.status !== 'busy') {
         await api.teams.update(team.id, { status: 'busy' });
       }
 
+      // Release previous team if they have no other active tickets
       if (previousAssignee && previousAssignee !== teamName) {
         const previousTeam = teams.find((item) => item.name === previousAssignee);
         if (previousTeam) {
-          const activeTickets = (await api.tickets.list()).filter((item: any) => (
-            item.id !== ticketId && item.assignee === previousAssignee && item.status !== 'Closed'
-          ));
+          const activeTickets = (await api.tickets.list()).filter((item: any) =>
+            item.id !== ticketId &&
+            item.assignee === previousAssignee &&
+            isTicketActive(item.status)
+          );
           if (activeTickets.length === 0) {
             await api.teams.update(previousTeam.id, { status: 'available' });
           }
@@ -328,9 +357,11 @@ export const api = {
           const teams = await api.teams.list();
           const team = teams.find((item) => item.name === ticket.assignee);
           if (team) {
-            const activeTickets = (await api.tickets.list()).filter((item: any) => (
-              item.id !== ticketId && item.assignee === ticket.assignee && item.status !== 'Closed'
-            ));
+            const activeTickets = (await api.tickets.list()).filter((item: any) =>
+              item.id !== ticketId &&
+              item.assignee === ticket.assignee &&
+              isTicketActive(item.status)
+            );
             if (activeTickets.length === 0) {
               await api.teams.update(team.id, { status: 'available' });
             }
@@ -464,6 +495,49 @@ export const api = {
 
       console.log('[Upload] provider: supabase (fallback)', file.type);
       return publicUrl;
+    },
+    async uploadAttachmentProgress(
+      ticketId: string,
+      file: File,
+      onProgress: (percent: number) => void
+    ): Promise<string> {
+      // Try R2 first (primary storage)
+      try {
+        const url = await uploadWithProgress(file, ticketId, onProgress);
+        console.log('[Upload] provider: r2 (presigned)', file.type, `${Math.round(file.size / 1024)}KB`);
+        return url;
+      } catch (r2Error) {
+        console.warn('[Upload] R2 presigned failed, falling back to Supabase (simulated progress):', r2Error);
+      }
+
+      // Fallback: Supabase Storage (legacy bucket)
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${ticketId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      
+      onProgress(10);
+      const { error } = await supabase.storage
+        .from('ticket-attachments')
+        .upload(fileName, file);
+      if (error) throw error;
+      onProgress(90);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('ticket-attachments')
+        .getPublicUrl(fileName);
+
+      onProgress(100);
+      console.log('[Upload] provider: supabase (fallback)', file.type);
+      return publicUrl;
+    },
+    async finalizeAttachments(draftId: string, ticketId: string): Promise<string[]> {
+      try {
+        const urls = await finalizeR2Attachments(draftId, ticketId);
+        console.log('[Storage] Finalized attachments from R2 draft:', draftId, 'to ticket:', ticketId);
+        return urls;
+      } catch (err) {
+        console.warn('[Storage] R2 finalize failed, returning empty array to fallback to original URLs:', err);
+        return [];
+      }
     }
   },
   notifications: {

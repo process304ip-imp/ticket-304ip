@@ -4,6 +4,7 @@ import { Notification } from '../App';
 import { priorityColors } from '../data';
 import { api, Ticket, ResponseTeam } from '../lib/api';
 import { useToast } from './Toast';
+import { formatPhoneNumber } from '../lib/utils';
 
 export function Team({ onAddNotification }: { onAddNotification: (title: string, message: string, type: Notification['type']) => void }) {
   const [teams, setTeams] = useState<ResponseTeam[]>([]);
@@ -134,7 +135,7 @@ export function Team({ onAddNotification }: { onAddNotification: (title: string,
               <div className="space-y-2 mb-4">
                 <p className="flex items-center gap-2 text-xs text-slate-600"><MapPin size={14} className="text-slate-400" />{team.area}</p>
                 <p className="flex items-center gap-2 text-xs text-slate-600"><Users size={14} className="text-slate-400" />{team.specialty}</p>
-                <p className="flex items-center gap-2 text-xs text-slate-600"><Phone size={14} className="text-slate-400" />{team.phone}</p>
+                <p className="flex items-center gap-2 text-xs text-slate-600"><Phone size={14} className="text-slate-400" />{formatPhoneNumber(team.phone)}</p>
               </div>
 
               <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
@@ -182,7 +183,7 @@ export function Team({ onAddNotification }: { onAddNotification: (title: string,
                 Dispatch
               </button>
               <div className="grid grid-cols-2 gap-2">
-                <a href={`tel:${team.phone.replace(/[^0-9+]/g, '')}`} className="py-2 flex items-center justify-center gap-2 text-sm font-bold text-slate-600 hover:bg-slate-200/50 rounded-lg bg-white border border-slate-200 transition-colors">
+                <a href={`tel:${(team.phone || '').replace(/[^0-9+]/g, '')}`} className="py-2 flex items-center justify-center gap-2 text-sm font-bold text-slate-600 hover:bg-slate-200/50 rounded-lg bg-white border border-slate-200 transition-colors">
                   <Phone size={14} /> โทร
                 </a>
                 <button onClick={() => {

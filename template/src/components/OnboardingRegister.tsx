@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { CheckCircle2, Lock, Mail, Phone, QrCode, User, Loader2, AlertCircle, KeyRound, ArrowLeft } from 'lucide-react';
+import { formatPhoneNumber } from '../lib/utils';
 import { api, Company } from '../lib/api';
 import { supabase } from '../lib/supabase';
 
@@ -375,7 +376,7 @@ export function OnboardingRegister({ onGoToLogin }: OnboardingRegisterProps) {
                   <input
                     required
                     value={phone}
-                    onChange={e => setPhone(e.target.value)}
+                    onChange={e => setPhone(formatPhoneNumber(e.target.value))}
                     className="w-full form-field pl-10"
                     placeholder="08X-XXX-XXXX"
                   />

@@ -10,6 +10,8 @@ const r2 = new S3Client({
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   },
   forcePathStyle: true, // Required for R2 — ขาดไม่ได้
+  requestChecksumCalculation: 'WHEN_REQUIRED' as any,
+  responseChecksumValidation: 'WHEN_REQUIRED' as any,
 });
 
 const ALLOWED_TYPES: Record<string, number> = {
@@ -107,7 +109,9 @@ export const handler: Handler = async (event) => {
 
     // Generate safe filename: {ticketId}/{uuid}-{timestamp}.{ext}
     const ext = originalName.includes('.') ? originalName.split('.').pop()!.toLowerCase() : 'bin';
-    const fileName = `${ticketId}/${randomUUID()}-${Date.now()}.${ext}`;
+    const rawFolder = ticketId ? ticketId.trim() : 'unknown';
+    const folder = rawFolder.startsWith('draft-') ? `drafts/${rawFolder}` : rawFolder;
+    const fileName = `${folder}/${randomUUID()}-${Date.now()}.${ext}`;
 
     // Upload to R2
     await r2.send(new PutObjectCommand({

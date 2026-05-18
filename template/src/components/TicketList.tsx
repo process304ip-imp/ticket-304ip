@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { z } from 'zod';
 import {
   AlertTriangle,
@@ -23,6 +24,7 @@ import {
   PlayCircle,
   Star,
   User,
+  Users,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -51,7 +53,32 @@ import { api, Ticket, Company, ResponseTeam, getAvatarUrl } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from './Toast';
-import { compressImage } from '../lib/utils';
+import { compressImage, formatPhoneNumber } from '../lib/utils';
+import { deleteFromR2, detectStorageProvider } from '../lib/r2-upload';
+import { playChime, ticketNotify } from '../lib/notify';
+const getVideoDuration = (file: File): Promise<number> => {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      window.URL.revokeObjectURL(video.src);
+      resolve(video.duration);
+    };
+    video.onerror = () => {
+      resolve(0);
+    };
+    video.src = URL.createObjectURL(file);
+  });
+};
+
+const generateDraftId = (): string => {
+  const now = new Date();
+  const yy = String(now.getFullYear()).substring(2, 4);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const randomStr = Math.random().toString(36).substring(2, 6);
+  return `draft-${yy}${mm}${dd}-${randomStr}`;
+};
 
 interface TicketListProps {
   onSelectTicket: (id: string) => void;
@@ -61,7 +88,38 @@ interface TicketListProps {
   lang?: 'TH' | 'EN';
 }
 
-const customIcon = L.divIcon({
+const customIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+function MapBounds({ tickets }: { tickets: Ticket[] }) {
+  const map = useMap();
+  
+  React.useEffect(() => {
+    const validTickets = tickets.filter(t => t.lat && t.lng && !isNaN(Number(t.lat)) && !isNaN(Number(t.lng)));
+    if (validTickets.length === 0) return;
+
+    const lats = validTickets.map(t => Number(t.lat));
+    const lngs = validTickets.map(t => Number(t.lng));
+    
+    const bounds = L.latLngBounds(
+      [Math.min(...lats), Math.min(...lngs)],
+      [Math.max(...lats), Math.max(...lngs)]
+    );
+    
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+  }, [tickets, map]);
+
+  return null;
+}
+
+const customPinIcon = L.divIcon({
   className: 'custom-pin',
   html: `<div style="color:#ef4444;width:28px;height:28px;transform:translate(-14px,-28px)">
     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="2"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3" fill="white"/></svg>
@@ -136,26 +194,65 @@ function getLastLogAt(ticket: any) {
   return new Date(Math.max(...timestamps)).toISOString();
 }
 
-function getSlaState(ticket: any) {
+function getSlaState(ticket: any, currentTime: number = Date.now()) {
   if (ticket.status === 'Closed') {
-    return { label: 'Closed', className: 'bg-slate-100 text-slate-600 border-slate-200' };
+    return { label: 'Closed', className: 'bg-slate-100 text-slate-600 border-slate-200', isGlowing: false };
   }
   if (ticket.status === 'Resolved (Tech)' || ticket.status === 'Resolved (CRM)') {
     return { 
       label: ticket.status === 'Resolved (CRM)' && ticket.auto_close_at 
         ? `Auto-close ${formatTimeUntil(ticket.auto_close_at)}` 
         : (ticket.status === 'Resolved (Tech)' ? 'Waiting CRM Confirm' : 'Waiting Feedback'), 
-      className: 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+      className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      isGlowing: false
     };
   }
 
   const due = parseDate(ticket.sla_due_at);
-  if (!due) return { label: 'No SLA', className: 'bg-slate-50 text-slate-500 border-slate-200' };
+  if (!due) return { label: 'No SLA', className: 'bg-slate-50 text-slate-500 border-slate-200', isGlowing: false };
 
-  const minutesLeft = Math.floor((due.getTime() - Date.now()) / 60000);
-  if (minutesLeft < 0) return { label: `Overdue ${Math.abs(minutesLeft)}m`, className: 'bg-red-50 text-red-700 border-red-200' };
-  if (minutesLeft <= 30) return { label: `Due ${minutesLeft}m`, className: 'bg-amber-50 text-amber-700 border-amber-200' };
-  return { label: 'On track', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+  const minutesLeft = Math.floor((due.getTime() - currentTime) / 60000);
+  if (minutesLeft < 0) {
+    const overdueMins = Math.abs(minutesLeft);
+    const label = overdueMins > 60 ? `Overdue ${Math.floor(overdueMins/60)}h ${overdueMins%60}m` : `Overdue ${overdueMins}m`;
+    return { label, className: 'bg-red-50 text-red-700 border-red-200', isGlowing: true };
+  }
+  
+  if (minutesLeft <= 60) {
+    return { label: `Due ${minutesLeft}m`, className: 'bg-amber-50 text-amber-700 border-amber-200', isGlowing: true };
+  }
+
+  const hoursLeft = Math.floor(minutesLeft / 60);
+  const minsLeft = minutesLeft % 60;
+  return { label: `Due ${hoursLeft}h ${minsLeft}m`, className: 'bg-blue-50 text-blue-700 border-blue-200', isGlowing: false };
+}
+
+function SlaBadge({ ticket, variant = 'card' }: { ticket: any; variant?: 'card' | 'list' }) {
+  const [now, setNow] = useState(Date.now());
+  
+  useEffect(() => {
+    if (ticket.status === 'Closed' || ticket.status?.startsWith('Resolved')) return;
+    if (!ticket.sla_due_at) return;
+    
+    const interval = setInterval(() => setNow(Date.now()), 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, [ticket.status, ticket.sla_due_at]);
+
+  const slaState = getSlaState(ticket, now);
+  
+  const baseClasses = variant === 'card' 
+    ? "px-2 py-0.5 rounded-md border text-[9px] font-black uppercase"
+    : "inline-flex w-fit px-2 py-0.5 rounded-md text-[10px] font-black border";
+    
+  const glowingClasses = slaState.isGlowing 
+    ? "animate-pulse ring-2 ring-offset-1 ring-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.5)]" 
+    : "";
+  
+  return (
+    <span className={`${baseClasses} ${slaState.className} ${glowingClasses}`}>
+      {slaState.label}
+    </span>
+  );
 }
 
 function getChannelClass(channel: string | null | undefined) {
@@ -178,6 +275,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [assignModalTicketId, setAssignModalTicketId] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number; openUp: boolean } | null>(null);
   const [gpsLocation, setGpsLocation] = useState('');
   const [pinPos, setPinPos] = useState<L.LatLng | null>(null);
   const [mapCenter, setMapCenter] = useState<L.LatLngExpression | null>(null);
@@ -198,6 +296,20 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   });
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [activeCardFilter, setActiveCardFilter] = useState<string | null>(null);
+
+  // ── Module 3: Realtime Sync & Notifications ──
+  const [isLive, setIsLive] = useState(false);
+  const [realtimeFlash, setRealtimeFlash] = useState(false);
+  const [newTicketIds, setNewTicketIds] = useState<Set<string>>(new Set());
+  // Track last seen timestamp in localStorage to persist across page changes
+  const lastSeenAtRef = useRef<number>(() => {
+    try { return parseInt(localStorage.getItem('crm_lastSeenAt') || '0', 10); } catch { return 0; }
+  });
+  const updateLastSeen = () => {
+    const now = Date.now();
+    lastSeenAtRef.current = now as unknown as number;
+    try { localStorage.setItem('crm_lastSeenAt', String(now)); } catch {}
+  };
 
   
   // Create form state
@@ -224,9 +336,30 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   const [feedback, setFeedback] = useState({ score: 0, comment: '' });
   
   // Image Upload State
+  interface TicketAttachment {
+    id: string;
+    file: File;
+    previewUrl: string;
+    progress: number;
+    url?: string;
+    error?: string;
+    status: 'compressing' | 'uploading' | 'done' | 'error';
+  }
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<TicketAttachment[]>([]);
+  const [draftId, setDraftId] = useState(() => generateDraftId());
+
+  useEffect(() => {
+    if (isCreateModalOpen) {
+      setDraftId(generateDraftId());
+      setAttachments([]);
+    } else {
+      attachments.forEach(item => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
+      setAttachments([]);
+    }
+  }, [isCreateModalOpen]);
 
   const zones = useMemo(() => {
     const set = new Set(companies.map(c => c.area).filter(Boolean));
@@ -243,51 +376,112 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
       .sort((a, b) => a.name.localeCompare(b.name, 'th'));
   }, [companies, zoneFilter, companySearch]);
 
-  useEffect(() => {
-    return () => {
-      previews.forEach(url => URL.revokeObjectURL(url));
-    };
-  }, [previews]);
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files) as File[];
       
-      setSubmitting(true);
-      try {
-        const compressedFiles = await Promise.all(
-          files.map(async (file) => {
-            if (file.type.startsWith('image/')) {
-              const blob = await compressImage(file);
-              return new File([blob], file.name, { type: 'image/jpeg' });
-            }
-            return file;
-          })
-        );
+      const newAttachments = files.map(file => {
+        const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        return {
+          id,
+          file,
+          previewUrl: URL.createObjectURL(file),
+          progress: 0,
+          status: 'compressing' as const
+        };
+      });
+
+      setAttachments(prev => [...prev, ...newAttachments]);
+
+      // Start processing each attachment in parallel
+      newAttachments.forEach(async (item) => {
+        let fileToUpload = item.file;
         
-        setSelectedFiles(prev => [...prev, ...compressedFiles]);
-        const newPreviews = compressedFiles.map(file => URL.createObjectURL(file));
-        setPreviews(prev => [...prev, ...newPreviews]);
-      } catch (err) {
-        console.error('Compression error:', err);
-        toast.error('ไม่สามารถย่อรูปภาพได้', 'กรุณาลองใหม่อีกครั้ง');
-      } finally {
-        setSubmitting(false);
-      }
+        try {
+          const isImg = item.file.type.startsWith('image/');
+          const isVid = item.file.type.startsWith('video/');
+
+          // 1. Validation for Videos (5 minutes maximum length, 50MB maximum size)
+          if (isVid) {
+            if (item.file.size > 50 * 1024 * 1024) {
+              toast.warning('ไฟล์มีขนาดใหญ่เกินกำหนด', 'วิดีโอควรมีขนาดไม่เกิน 50MB');
+              setAttachments(prev => prev.map(a => a.id === item.id ? { ...a, status: 'error' as const, error: 'ไฟล์ใหญ่เกิน 50MB' } : a));
+              return;
+            }
+
+            const duration = await getVideoDuration(item.file);
+            if (duration > 300) {
+              toast.warning('ความยาววิดีโอเกินกำหนด', 'วิดีโอต้องยาวไม่เกิน 5 นาที (300 วินาที)');
+              setAttachments(prev => prev.map(a => a.id === item.id ? { ...a, status: 'error' as const, error: 'ความยาวเกิน 5 นาที' } : a));
+              return;
+            }
+          }
+
+          // 2. Compression (only for images)
+          if (isImg) {
+            try {
+              const blob = await compressImage(item.file);
+              fileToUpload = new File([blob], item.file.name, { type: 'image/jpeg' });
+            } catch (err) {
+              console.error('Compression error:', err);
+              // Fall back to original file if compression fails
+            }
+          }
+
+          // Update status to uploading
+          setAttachments(prev => prev.map(a => 
+            a.id === item.id ? { ...a, file: fileToUpload, status: 'uploading' as const } : a
+          ));
+
+          // 3. Upload
+          const publicUrl = await api.storage.uploadAttachmentProgress(
+            draftId,
+            fileToUpload,
+            (pct) => {
+              setAttachments(prev => prev.map(a => 
+                a.id === item.id ? { ...a, progress: pct } : a
+              ));
+            }
+          );
+
+          // 4. Mark done
+          setAttachments(prev => prev.map(a => 
+            a.id === item.id ? { ...a, status: 'done' as const, progress: 100, url: publicUrl } : a
+          ));
+
+        } catch (error: any) {
+          console.error('Pre-upload error:', error);
+          setAttachments(prev => prev.map(a => 
+            a.id === item.id ? { ...a, status: 'error' as const, error: error.message || 'อัปโหลดไม่สำเร็จ' } : a
+          ));
+          toast.error(`อัปโหลดไฟล์ ${item.file.name} ไม่สำเร็จ`, error.message || 'กรุณาลองใหม่อีกครั้ง');
+        }
+      });
     }
   };
 
-  const removeFile = (index: number) => {
-    URL.revokeObjectURL(previews[index]);
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-    setPreviews(prev => prev.filter((_, i) => i !== index));
+  const removeAttachment = async (id: string) => {
+    const item = attachments.find(a => a.id === id);
+    if (item) {
+      URL.revokeObjectURL(item.previewUrl);
+      
+      // If the file was successfully uploaded, delete it from storage in background
+      if (item.status === 'done' && item.url) {
+        const provider = detectStorageProvider(item.url);
+        if (provider === 'r2') {
+          deleteFromR2(item.url).catch(err => console.warn('Clean up of removed file failed:', err));
+        }
+      }
+      
+      setAttachments(prev => prev.filter(a => a.id !== id));
+    }
   };
 
   useEffect(() => {
     if (profile) {
       if (profile.company_id && !selectedCompanyId) setSelectedCompanyId(profile.company_id);
       if (profile.full_name && !contactName) setContactName(profile.full_name);
-      if (profile.phone && !contactPhone) setContactPhone(profile.phone);
+      if (profile.phone && !contactPhone) setContactPhone(formatPhoneNumber(profile.phone));
     }
   }, [profile]);
 
@@ -305,16 +499,77 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   }, [category, allSubCategories, dbCategories]);
 
   useEffect(() => {
-    loadData();
-    // Realtime subscription
-    const channel = supabase.channel('tickets_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
-        loadData();
-      })
-      .subscribe();
+    const lastSeenAt = (() => {
+      try { return parseInt(localStorage.getItem('crm_lastSeenAt') || '0', 10); } catch { return 0; }
+    })();
+
+    // Initial load — detect new tickets since last visit
+    (async () => {
+      const loadedTickets = await loadData();
+      // Mark tickets created after lastSeenAt as NEW (badge)
+      if (lastSeenAt > 0 && Array.isArray(loadedTickets) && loadedTickets.length > 0) {
+        const newIds = new Set<string>(
+          loadedTickets
+            .filter((t: any) => t.created_at && new Date(t.created_at).getTime() > lastSeenAt)
+            .map((t: any) => t.id)
+        );
+        if (newIds.size > 0) setNewTicketIds(newIds);
+      }
+      updateLastSeen();
+    })();
+
+    // Realtime subscription — Module 3 enhanced version
+    const channel = supabase
+      .channel('tickets_changes_m3')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'tickets' },
+        (payload) => {
+          const newTicket = payload.new as any;
+          // Mark as new badge
+          setNewTicketIds(prev => new Set([...prev, newTicket.id]));
+          // Flash indicator
+          setRealtimeFlash(true);
+          setTimeout(() => setRealtimeFlash(false), 1200);
+          // Play chime & toast — only for non-self created (or always for admins/crm)
+          const company = newTicket.company_name || 'Unknown';
+          const priority = newTicket.priority || 'Low';
+          if (priority === 'Critical') {
+            ticketNotify.critical(newTicket.id, newTicket.sub_category || 'Critical Issue');
+          } else {
+            ticketNotify.newTicket(newTicket.id, company);
+          }
+          // Refresh data silently
+          loadData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'tickets' },
+        (payload) => {
+          const updated = payload.new as any;
+          const old = payload.old as any;
+          // Flash indicator for any update
+          setRealtimeFlash(true);
+          setTimeout(() => setRealtimeFlash(false), 800);
+          // Play sound for status changes
+          if (updated.status !== old?.status) {
+            if (updated.status === 'Resolved (Tech)' || updated.status === 'Resolved (CRM)') {
+              playChime('resolved');
+            } else {
+              playChime('update');
+            }
+          }
+          loadData();
+        }
+      )
+      .subscribe((status) => {
+        setIsLive(status === 'SUBSCRIBED');
+      });
 
     return () => {
       supabase.removeChannel(channel);
+      setIsLive(false);
     };
   }, [role, profile?.id, profile?.department, initialMode]);
 
@@ -361,6 +616,8 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
     }
 
     setLoading(false);
+    // Return tickets for badge detection on initial load
+    return ticketsResult.status === 'fulfilled' ? (ticketsResult.value as any[]) : [];
   }
 
   const handleDeleteTicket = async (ticketId: string) => {
@@ -451,7 +708,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   const affectedSuggestions = companies.filter((company) => {
     const query = affectedCompanyQuery.trim().toLowerCase();
     const matchesQuery = !query || [company.name, company.area, company.contact_name].some((value) => (value || '').toLowerCase().includes(query));
-    return matchesQuery && !affectedCompanyIds.includes(company.id);
+    return matchesQuery;
   });
 
   const addAffectedCompany = (companyId: string) => {
@@ -622,15 +879,22 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
         );
       }
 
-      // Upload images if any
-      let media_urls: string[] = [];
-      if (selectedFiles.length > 0) {
+      // Grab pre-uploaded image URLs
+      const preUploadedUrls = attachments
+        .filter(a => a.status === 'done' && a.url)
+        .map(a => a.url as string);
+
+      let media_urls = preUploadedUrls;
+
+      // Finalize attachments in R2: Move from drafts/draft-yymmdd-xxxx to T260518-xxxx
+      if (preUploadedUrls.length > 0) {
         try {
-          const uploadPromises = selectedFiles.map(file => api.storage.uploadAttachment(ticket.id, file));
-          media_urls = await Promise.all(uploadPromises);
-        } catch (uploadErr) {
-          console.error('Upload failed:', uploadErr);
-          toast.error('อัปโหลดรูปภาพบางส่วนไม่สำเร็จ', 'แต่ Ticket ถูกเปิดเรียบร้อยแล้ว');
+          const finalizedUrls = await api.storage.finalizeAttachments(draftId, ticket.id);
+          if (finalizedUrls && finalizedUrls.length > 0) {
+            media_urls = finalizedUrls;
+          }
+        } catch (finalizeErr) {
+          console.warn('Failed to finalize attachments to R2 ticket folder, using draft URLs:', finalizeErr);
         }
       }
 
@@ -655,9 +919,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
       setAffectedCompanyIds([]);
       setGpsLocation('');
       setPinPos(null);
-      setSelectedFiles([]);
-      setPreviews([]);
-      
+
       setIsCreateModalOpen(false);
       // Auto-refresh ticket table
       await loadData();
@@ -759,13 +1021,12 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
     try {
       const isClaim = confirmClaim.type === 'claim';
       const newResponderId = isClaim ? profile.id : null;
-      const newStatus = isClaim ? 'In Progress' : 'Open';
-      const prevStatus = confirmClaim.previousStatus || (isClaim ? 'Open' : 'In Progress');
+      const currentStatus = confirmClaim.previousStatus || 'Open';
 
-      // 1. Update ticket: responder_id + status
+      // 1. Update ticket: responder_id ONLY
       await api.tickets.update(
         confirmClaim.ticketId,
-        { responder_id: newResponderId, status: newStatus } as any,
+        { responder_id: newResponderId } as any,
         { name: profile.full_name || 'User', role: profile.role, id: profile.id }
       );
 
@@ -778,14 +1039,14 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
         author_id: profile.id,
         author_name: profile.full_name || 'User',
         author_role: profile.role as any,
-        status_from: prevStatus,
-        status_to: newStatus,
+        status_from: currentStatus,
+        status_to: currentStatus,
         is_internal: true,
       });
 
       toast.success(
         isClaim ? 'รับเป็น Response เรียบร้อยแล้ว' : 'ยกเลิก Response เรียบร้อยแล้ว',
-        isClaim ? 'ระบบบันทึกการรับเคสแล้ว สถานะเปลี่ยนเป็น In Progress' : 'สถานะเคสกลับเป็น Open แล้ว'
+        isClaim ? 'ระบบบันทึกการรับเคสแล้ว' : 'ระบบบันทึกการยกเลิกเคสแล้ว'
       );
       loadData();
     } catch (error: any) {
@@ -825,6 +1086,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
   );
 
   return (
+    <>
     <div className="max-w-[1800px] mx-auto space-y-6">
       <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {loading && filteredTickets.length === 0 ? (
@@ -909,7 +1171,21 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* ── Module 3: Live Status Indicator ── */}
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-black transition-all duration-300 ${
+                isLive
+                  ? realtimeFlash
+                    ? 'bg-emerald-100 text-emerald-700 border-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.4)] scale-105'
+                    : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                  : 'bg-slate-50 text-slate-400 border-slate-200'
+              }`}
+              title={isLive ? 'Supabase Realtime: Connected — auto-refreshing' : 'Realtime: Connecting...'}
+            >
+              <span className={`w-2 h-2 rounded-full ${isLive ? (realtimeFlash ? 'bg-emerald-400 animate-ping' : 'bg-emerald-400 animate-pulse') : 'bg-slate-300'}`} />
+              <span className="hidden sm:inline">{isLive ? 'LIVE' : 'OFFLINE'}</span>
+            </div>
             {role !== 'technician' && (
               <button onClick={() => setIsCreateModalOpen(true)} className="px-5 py-2.5 bg-primary text-white text-sm font-black rounded-lg hover:bg-primary-container shadow-sm flex items-center gap-2">
                 <Plus size={16} />
@@ -1014,7 +1290,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
               <div className="py-16 text-center text-slate-400 text-sm">ไม่พบรายการที่ตรงกับการค้นหา</div>
             ) : paginatedTickets.map((ticket, index) => {
               const displayNo = (page - 1) * pageSize + index + 1;
-              const slaState = getSlaState(ticket);
+// slaState removed from card level to let SlaBadge manage it
               const lastLogAt = getLastLogAt(ticket);
               return (
                 <motion.div 
@@ -1036,6 +1312,13 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                           {ticket.id}
                         </span>
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight ${statusColors[ticket.status as TicketStatus]}`}>{ticket.status}</span>
+                        {/* Module 3: New Ticket Badge */}
+                        {newTicketIds.has(ticket.id) && (
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500 text-white rounded-full text-[9px] font-black uppercase tracking-wider animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                            NEW
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm font-black text-slate-800 leading-tight mb-1">{ticket.sub_category}</p>
                       <p className="text-xs font-bold text-slate-600 mb-1 flex items-center gap-1">
@@ -1071,17 +1354,26 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
 	                    <div className="flex flex-wrap items-center gap-2">
 	                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${priorityColors[ticket.priority as any]}`}>{ticket.priority}</span>
                         {ticket.channel && <span className={`px-2 py-0.5 rounded-md border text-[9px] font-black uppercase ${getChannelClass(ticket.channel)}`}>{ticket.channel}</span>}
-                        <span className={`px-2 py-0.5 rounded-md border text-[9px] font-black uppercase ${slaState.className}`}>{slaState.label}</span>
+                        <SlaBadge ticket={ticket} variant="card" />
 	                    </div>
 	                    <div className="flex items-center gap-2">
-                      {ticket.assignee ? (
-                        <div className="flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg text-[9px] font-black">
-                          <User size={10} />
-                          {ticket.assignee.split(' ')[0]}
-                        </div>
-                      ) : (
-                        <span className="text-[9px] text-slate-400 font-bold">Unassigned</span>
-                      )}
+                        {(() => {
+                          const isCustomerOpened = (ticket as any).creator?.role === 'customer';
+                          const responder = (ticket as any).responder || (!isCustomerOpened ? (ticket as any).creator : null);
+                          return responder ? (
+                            <div className="flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg text-[9px] font-black" title="Response">
+                              <User size={10} />
+                              {responder.full_name.split(' ')[0]}
+                            </div>
+                          ) : ticket.assignee ? (
+                            <div className="flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg text-[9px] font-black" title="Assignee Team">
+                              <Users size={10} />
+                              {ticket.assignee.split(' ')[0]}
+                            </div>
+                          ) : (
+                            <span className="text-[9px] text-slate-400 font-bold">Unassigned</span>
+                          );
+                        })()}
 	                    </div>
 	                  </div>
                     <p className="mt-2 text-[10px] font-bold text-slate-400 flex items-center gap-1">
@@ -1147,18 +1439,32 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                   </tr>
                 ) : paginatedTickets.map((ticket, index) => {
                   const isNearBottom = index > paginatedTickets.length - 4 && paginatedTickets.length > 5;
-                  const slaState = getSlaState(ticket);
+                  // slaState managed by SlaBadge
                   const lastLogAt = getLastLogAt(ticket);
                   
                   return (
-                    <tr key={ticket.id} className="hover:bg-primary/5 transition-colors group">
+                    <tr
+                      key={ticket.id}
+                      className={`hover:bg-primary/5 transition-colors group ${
+                        newTicketIds.has(ticket.id) ? 'bg-emerald-50/40' : ''
+                      }`}
+                    >
                       <td className="sticky left-0 z-20 bg-white group-hover:bg-slate-50 px-4 py-4 border-b border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                        <button 
-                          onClick={() => onSelectTicket(ticket.id)} 
-                          className="font-mono text-sm font-black text-blue-600 hover:underline transition-colors block mb-1"
-                        >
-                          {ticket.id}
-                        </button>
+                        <div className="flex items-center gap-2 mb-1">
+                          <button 
+                            onClick={() => onSelectTicket(ticket.id)} 
+                            className="font-mono text-sm font-black text-blue-600 hover:underline transition-colors"
+                          >
+                            {ticket.id}
+                          </button>
+                          {/* Module 3: New Ticket Badge (Desktop) */}
+                          {newTicketIds.has(ticket.id) && (
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500 text-white rounded-full text-[9px] font-black uppercase animate-pulse">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                              NEW
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm font-black text-slate-800 leading-tight max-w-[180px] truncate">{ticket.sub_category || 'General request'}</p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-2">
                           <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-black uppercase tracking-widest ${categoryColors[ticket.category as TicketCategory] || 'bg-slate-50 text-slate-600 border-slate-100/50'}`}>
@@ -1181,7 +1487,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                             <div className="flex items-center gap-1.5 flex-1 min-w-0">
                               <User size={14} className="text-slate-400 shrink-0" /> 
                               <span className="text-xs text-slate-700 font-black truncate">{ticket.contact_name || 'N/A'}</span>
-                              {ticket.contact_phone ? <span className="text-blue-600 font-black text-[11px] bg-blue-50 px-1.5 py-0.5 rounded ml-1 truncate">📞 {ticket.contact_phone}</span> : null}
+                              {ticket.contact_phone ? <span className="text-blue-600 font-black text-[11px] bg-blue-50 px-1.5 py-0.5 rounded ml-1 truncate">📞 {formatPhoneNumber(ticket.contact_phone)}</span> : null}
                             </div>
                           </div>
                         </div>
@@ -1199,9 +1505,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                             } animate-pulse`} />
                             <span className="text-xs font-black text-slate-500 uppercase">{ticket.priority}</span>
                           </div>
-                          <span className={`inline-flex w-fit px-2 py-0.5 rounded-md text-[10px] font-black border ${slaState.className}`}>
-                            {slaState.label}
-                          </span>
+                          <SlaBadge ticket={ticket} variant="list" />
                         </div>
                       </td>
                       <td className="px-3 py-4 border-b border-slate-100">
@@ -1280,61 +1584,37 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                       <td className={`sticky right-0 ${activeMenuId === ticket.id ? 'z-50' : 'z-20'} bg-white group-hover:bg-slate-50 px-4 py-4 text-right border-b border-slate-100 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]`}>
                         <div className="flex items-center justify-end gap-2 relative">
                           <button 
-                            onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === ticket.id ? null : ticket.id); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (activeMenuId === ticket.id) {
+                                setActiveMenuId(null);
+                                setMenuAnchor(null);
+                              } else {
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                const openUp = rect.bottom + 200 > window.innerHeight;
+                                setMenuAnchor({
+                                  top: openUp ? rect.top : rect.bottom + 4,
+                                  right: window.innerWidth - rect.right,
+                                  openUp,
+                                });
+                                setActiveMenuId(ticket.id);
+                              }
+                            }}
                             className="px-4 py-2 text-xs font-black text-primary bg-primary/5 border border-primary/10 rounded-lg hover:bg-primary/10 flex items-center gap-1.5 transition-all shadow-sm"
                           >
                             จัดการ <ChevronDown size={14} />
                           </button>
 
                           <AnimatePresence>
-                            {activeMenuId === ticket.id && (
-                              <>
-                                <motion.div 
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  exit={{ opacity: 0 }}
-                                  className="fixed inset-0 z-40" 
-                                  onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); }}
-                                />
-                                <motion.div 
-                                  initial={{ opacity: 0, scale: 0.9, y: isNearBottom ? 10 : -10 }}
-                                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                                  exit={{ opacity: 0, scale: 0.9, y: isNearBottom ? 10 : -10 }}
-                                  className={`absolute right-0 ${isNearBottom ? 'bottom-full mb-1' : 'top-full mt-1'} w-44 bg-white border border-slate-200 shadow-2xl rounded-xl z-[60] overflow-hidden flex flex-col py-1 origin-top-right`} 
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <button 
-                                    onClick={() => { onSelectTicket(ticket.id); setActiveMenuId(null); }} 
-                                    className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors w-full text-left"
-                                  >
-                                    <Eye size={14} className="text-primary" /> ดูรายละเอียด
-                                  </button>
-                                  {role === 'customer' && ticket.status === 'Resolved' && (
-                                    <button 
-                                      onClick={() => { setFeedbackTicketId(ticket.id); setIsFeedbackModalOpen(true); setActiveMenuId(null); }} 
-                                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors w-full text-left border-t border-slate-100"
-                                    >
-                                      <Star size={14} className="fill-indigo-600" /> ให้ Feedback และปิดงาน
-                                    </button>
-                                  )}
-                                  {ticket.status !== 'Closed' && (role === 'crm' || role === 'admin') && (
-                                    <button 
-                                      onClick={() => { setAssignModalTicketId(ticket.id); setActiveMenuId(null); }} 
-                                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors w-full text-left border-t border-slate-100"
-                                    >
-                                      <Crosshair size={14} className="text-indigo-600" /> เปลี่ยนทีมมอบหมาย
-                                    </button>
-                                  )}
-                                  {role === 'admin' && (
-                                    <button 
-                                      onClick={() => { handleDeleteTicket(ticket.id); setActiveMenuId(null); }}
-                                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors w-full text-left border-t border-slate-100"
-                                    >
-                                      <Trash2 size={14} /> ลบ Ticket
-                                    </button>
-                                  )}
-                                </motion.div>
-                              </>
+                            {activeMenuId === ticket.id && menuAnchor && (
+                              <motion.div
+                                key="backdrop"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-[9998]"
+                                onClick={() => { setActiveMenuId(null); setMenuAnchor(null); }}
+                              />
                             )}
                           </AnimatePresence>
                         </div>
@@ -1373,12 +1653,18 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
           </div>
           <div className="h-[420px]">
             <MapContainer center={[13.7563, 101.568]} zoom={13} style={{ height: '100%', width: '100%' }}>
+              <MapBounds tickets={filteredTickets} />
               <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               {filteredTickets.map((ticket) => (
                 <Marker key={ticket.id} position={[Number(ticket.lat), Number(ticket.lng)] as L.LatLngExpression} icon={customIcon}>
                   <Popup>
                     <div className="font-sans">
-                      <b className="text-primary block">{ticket.id}</b>
+                      <button 
+                        onClick={() => onSelectTicket(ticket.id)}
+                        className="text-primary block font-bold text-left hover:underline w-full cursor-pointer"
+                      >
+                        {ticket.id}
+                      </button>
                       <span className="text-xs">{ticket.companies?.name || ticket.company_name}</span>
                       <br />
                       <span className="text-xs text-slate-500">{ticket.location_text}</span>
@@ -1622,21 +1908,41 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                         </div>
                       )}
 
-                      <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 divide-y divide-slate-200">
+                      <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl divide-y bg-white shadow-inner">
                         {affectedSuggestions.length > 0 ? (
-                          affectedSuggestions.slice(0, 5).map((company) => (
-                            <button
-                              key={company.id}
-                              type="button"
-                              onClick={() => addAffectedCompany(company.id)}
-                              className="w-full px-3 py-2.5 text-left hover:bg-white transition-colors"
-                            >
-                              <p className="text-sm font-black text-slate-800">{company.name}</p>
-                              <p className="text-[11px] text-slate-500">{company.area}</p>
-                            </button>
-                          ))
+                          affectedSuggestions.map((company) => {
+                            const isSelected = affectedCompanyIds.includes(company.id);
+                            return (
+                              <button
+                                key={company.id}
+                                type="button"
+                                onClick={() => isSelected ? removeAffectedCompany(company.id) : addAffectedCompany(company.id)}
+                                className={`w-full text-left px-4 py-3 hover:bg-indigo-50 transition-all flex items-center justify-between border-l-4 ${
+                                  isSelected 
+                                  ? 'bg-indigo-50 border-indigo-500' 
+                                  : 'border-transparent'
+                                }`}
+                              >
+                                <div>
+                                  <p className={`text-sm font-black transition-colors ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>
+                                    {company.name}
+                                  </p>
+                                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide mt-0.5">
+                                    {company.area || 'ไม่ระบุโซน'}
+                                  </p>
+                                </div>
+                                {isSelected && (
+                                  <div className="bg-indigo-500 rounded-full p-1 shadow-sm">
+                                    <Check size={10} className="text-white" strokeWidth={4} />
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })
                         ) : (
-                          <p className="px-3 py-3 text-xs text-slate-500">ไม่พบผลลัพธ์</p>
+                          <div className="p-6 text-center">
+                            <p className="text-xs text-slate-400 font-medium">ไม่พบผลลัพธ์การค้นหา</p>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1658,7 +1964,7 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                   <FieldWithError label="เบอร์ติดต่อ" error={formErrors.contactPhone}>
                     <input
                       value={contactPhone}
-                      onChange={(e) => setContactPhone(e.target.value)}
+                      onChange={(e) => setContactPhone(formatPhoneNumber(e.target.value))}
                       className={`w-full form-field ${formErrors.contactPhone ? 'border-red-400 bg-red-50' : ''}`}
                       placeholder="08X-XXX-XXXX"
                       inputMode="tel"
@@ -1694,13 +2000,13 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                   onChange={handleFileChange}
                 />
 
-                {previews.length > 0 && (
+                {attachments.length > 0 && (
                   <div className="grid grid-cols-4 gap-2 mb-4">
-                    {previews.map((url, i) => (
-                      <div key={url} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 group bg-slate-50 flex items-center justify-center">
-                        {selectedFiles[i]?.type.startsWith('video/') ? (
+                    {attachments.map((item) => (
+                      <div key={item.id} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 group bg-slate-50 flex items-center justify-center">
+                        {item.file.type.startsWith('video/') ? (
                           <>
-                            <video src={url} className="w-full h-full object-cover" />
+                            <video src={item.previewUrl} className="w-full h-full object-cover" />
                             <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition-colors">
                               <div className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center shadow-sm">
                                 <Play size={16} className="text-slate-800 fill-slate-800 ml-0.5" />
@@ -1708,11 +2014,36 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                             </div>
                           </>
                         ) : (
-                          <img src={url} alt="Preview" className="w-full h-full object-cover" />
+                          <img src={item.previewUrl} alt="Preview" className="w-full h-full object-cover" />
                         )}
+                        
+                        {/* Progress overlay */}
+                        {(item.status === 'compressing' || item.status === 'uploading') && (
+                          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white px-2">
+                            <Loader2 size={16} className="animate-spin mb-1 text-primary" />
+                            <span className="text-[10px] font-black">
+                              {item.status === 'compressing' ? 'ย่อรูป...' : `${item.progress}%`}
+                            </span>
+                            <div className="w-full bg-slate-700 rounded-full h-1 mt-1 overflow-hidden">
+                              <div 
+                                className="bg-primary h-1 rounded-full transition-all duration-300"
+                                style={{ width: `${item.status === 'compressing' ? 15 : item.progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Error state */}
+                        {item.status === 'error' && (
+                          <div className="absolute inset-0 bg-red-900/80 flex flex-col items-center justify-center text-white px-1 text-center">
+                            <span className="text-[10px] font-bold">อัปโหลดล้มเหลว</span>
+                            <span className="text-[8px] opacity-80 line-clamp-2">{item.error || 'กรุณาลองใหม่'}</span>
+                          </div>
+                        )}
+
                         <button 
                           type="button"
-                          onClick={() => removeFile(i)}
+                          onClick={() => removeAttachment(item.id)}
                           className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X size={12} />
@@ -1730,6 +2061,9 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
                   <Camera size={24} />
                   <span className="text-sm font-bold">อัปโหลดรูปภาพจากหน้างาน</span>
                 </button>
+                <p className="text-[11px] text-slate-400 mt-2 text-center">
+                  * รองรับไฟล์ภาพและวิดีโอ (จำกัดวิดีโอไม่เกิน 50MB และความยาวไม่เกิน 5 นาทีต่อคลิป)
+                </p>
               </form>
             </div>
 
@@ -1739,11 +2073,25 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
               </button>
               <button 
                 onClick={handleCreateTicket} 
-                disabled={submitting}
+                disabled={submitting || attachments.some(a => a.status === 'compressing' || a.status === 'uploading')}
                 className="flex-[2] py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary-container flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {submitting ? <Loader2 size={18} className="animate-spin" /> : <Navigation size={18} />}
-                {submitting ? 'กำลังบันทึก...' : 'บันทึกและส่งให้ CRM'}
+                {submitting ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    <span>กำลังเปิด Ticket...</span>
+                  </>
+                ) : attachments.some(a => a.status === 'compressing' || a.status === 'uploading') ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    <span>กำลังอัปโหลดรูป ({attachments.filter(a => a.status === 'done').length}/{attachments.length})...</span>
+                  </>
+                ) : (
+                  <>
+                    <Navigation size={18} />
+                    <span>บันทึกและส่งให้ CRM</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1898,6 +2246,59 @@ export function TicketList({ onSelectTicket, role, initialMode = 'board' }: Tick
         </div>
       )}
     </div>
+
+    {/* ── Floating action menu portal ── */}
+    {activeMenuId && menuAnchor && (() => {
+      const t = paginatedTickets.find(tk => tk.id === activeMenuId);
+      if (!t) return null;
+      return ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            right: menuAnchor.right,
+            ...(menuAnchor.openUp
+              ? { bottom: window.innerHeight - menuAnchor.top + 4 }
+              : { top: menuAnchor.top }),
+            zIndex: 9999,
+          }}
+          className="w-52 bg-white border border-slate-200 shadow-2xl rounded-xl overflow-hidden flex flex-col py-1"
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            onClick={() => { onSelectTicket(t.id); setActiveMenuId(null); setMenuAnchor(null); }}
+            className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors w-full text-left"
+          >
+            <Eye size={14} className="text-primary" /> ดูรายละเอียด
+          </button>
+          {role === 'customer' && t.status === 'Resolved' && (
+            <button
+              onClick={() => { setFeedbackTicketId(t.id); setIsFeedbackModalOpen(true); setActiveMenuId(null); setMenuAnchor(null); }}
+              className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors w-full text-left border-t border-slate-100"
+            >
+              <Star size={14} className="fill-indigo-600" /> ให้ Feedback และปิดงาน
+            </button>
+          )}
+          {t.status !== 'Closed' && (role === 'crm' || role === 'admin') && (
+            <button
+              onClick={() => { setAssignModalTicketId(t.id); setActiveMenuId(null); setMenuAnchor(null); }}
+              className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors w-full text-left border-t border-slate-100"
+            >
+              <Crosshair size={14} className="text-indigo-600" /> เปลี่ยนทีมมอบหมาย
+            </button>
+          )}
+          {role === 'admin' && (
+            <button
+              onClick={() => { handleDeleteTicket(t.id); setActiveMenuId(null); setMenuAnchor(null); }}
+              className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors w-full text-left border-t border-slate-100"
+            >
+              <Trash2 size={14} /> ลบ Ticket
+            </button>
+          )}
+        </div>,
+        document.body
+      );
+    })()}
+    </>
   );
 }
 

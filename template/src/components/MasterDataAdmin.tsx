@@ -16,20 +16,26 @@ import {
   ArrowRight,
   Zap,
   Droplets,
-  Building2
+  Building2,
+  BookOpen,
+  Clock,
+  AlertTriangle,
+  TrendingUp,
+  Info
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useToast } from './Toast';
 import { useAuth } from '../hooks/useAuth';
 import { categoryColors, TicketCategory } from '../data';
+import { formatPhoneNumber } from '../lib/utils';
 
 export default function MasterDataAdmin() {
   const { toast } = useToast();
   const { profile } = useAuth();
   const role = profile?.role;
   
-  const [activeTab, setActiveTab] = useState<'categories' | 'sub_categories' | 'templates' | 'teams'>('categories');
+  const [activeTab, setActiveTab] = useState<'categories' | 'sub_categories' | 'templates' | 'teams' | 'rules'>('categories');
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -206,7 +212,8 @@ export default function MasterDataAdmin() {
             { id: 'categories', label: 'หมวดหมู่', icon: Layers },
             { id: 'sub_categories', label: 'ปัญหาย่อย', icon: Filter },
             { id: 'templates', label: 'ข้อความตอบกลับ', icon: MessageSquare },
-            { id: 'teams', label: 'ทีมตอบสนอง', icon: Users }
+            { id: 'teams', label: 'ทีมตอบสนอง', icon: Users },
+            { id: 'rules', label: 'หลักการ Priority & SLA', icon: BookOpen },
           ].map((tab) => (
             <button 
               key={tab.id}
@@ -231,8 +238,177 @@ export default function MasterDataAdmin() {
         </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* ── Business Rules Tab ───────────────────────────────── */}
+      {activeTab === 'rules' ? (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+          {/* Backward Compatibility Notice */}
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-4">
+            <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={20} />
+            <div>
+              <p className="font-black text-amber-800 text-sm">หมายเหตุสำหรับทีมงาน — การปรับ Priority/SLA Rules</p>
+              <p className="text-amber-700 text-sm mt-1 leading-relaxed">
+                การแก้ไขหลักการ Priority และ SLA <strong>จะมีผลเฉพาะกับ Ticket ที่เปิดใหม่</strong> หลังจากวันที่อัปเดตเท่านั้น
+                Ticket เก่าที่มี <code className="bg-amber-100 px-1 rounded text-xs">sla_due_at</code> อยู่แล้วจะไม่ถูกเปลี่ยนแปลง
+                เพราะ SLA Trigger ทำงานเฉพาะตอนสร้าง Ticket ใหม่ (INSERT) หรือเมื่อมีการเปลี่ยน priority เท่านั้น
+              </p>
+              <p className="text-amber-600 text-xs mt-2 font-bold">→ หากต้องการปรับให้แจ้ง Dev Team เพื่ออัปเดต DB Trigger Function: <code className="bg-amber-100 px-1 rounded">trg_calculate_sla()</code> และ Client Function: <code className="bg-amber-100 px-1 rounded">calculatePriority()</code> พร้อมกัน</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+            {/* Priority Decision Matrix */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                <TrendingUp size={18} className="text-primary" />
+                <div>
+                  <h3 className="font-black text-slate-800">Priority Decision Matrix</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">ระบบกำหนด Priority อัตโนมัติตอนเปิด Ticket</p>
+                </div>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {[
+                  {
+                    priority: 'Critical',
+                    color: 'bg-red-500',
+                    textColor: 'text-red-700',
+                    bgColor: 'bg-red-50 border-red-100',
+                    rules: [
+                      'Sub-category: Blackout (ไฟดับทั้งหมด)',
+                      'Sub-category: Safety: Fire (เพลิงไหม้)',
+                      'Power: บริษัทที่ได้รับผลกระทบ ≥ 5 แห่ง',
+                      'Power: รัศมีผลกระทบ ≥ 1,000 เมตร',
+                    ]
+                  },
+                  {
+                    priority: 'High',
+                    color: 'bg-orange-500',
+                    textColor: 'text-orange-700',
+                    bgColor: 'bg-orange-50 border-orange-100',
+                    rules: [
+                      'Sub-category: No Water (น้ำไม่ไหล)',
+                      'Sub-category: Animal Fault (สัตว์รบกวน)',
+                      'Sub-category: Waste Water Treatment',
+                      'Power: บริษัทที่ได้รับผลกระทบ ≥ 2 แห่ง',
+                      'Power: รัศมีผลกระทบ ≥ 300 เมตร',
+                      'Water Supply: Pipe Leakage (ท่อแตก)',
+                    ]
+                  },
+                  {
+                    priority: 'Medium',
+                    color: 'bg-amber-500',
+                    textColor: 'text-amber-700',
+                    bgColor: 'bg-amber-50 border-amber-100',
+                    rules: [
+                      'Sub-category: Voltage Drop (ไฟตก)',
+                      'Sub-category: Slowly Water Flowing (น้ำไหลช้า)',
+                      'Sub-category: Water Quality (คุณภาพน้ำ)',
+                      'Sub-category: Road / Drainage (ถนน/ระบบระบายน้ำ)',
+                      'Power: กรณีอื่นๆ ที่ไม่ตรงเงื่อนไขข้างต้น (Default)',
+                    ]
+                  },
+                  {
+                    priority: 'Low',
+                    color: 'bg-slate-400',
+                    textColor: 'text-slate-600',
+                    bgColor: 'bg-slate-50 border-slate-100',
+                    rules: [
+                      'ทุก Category/Sub-category อื่นๆ ที่ไม่ตรงเงื่อนไขข้างต้น',
+                      'Facility, General Request, ฯลฯ',
+                    ]
+                  },
+                ].map((item) => (
+                  <div key={item.priority} className={`p-4 border-l-4 ${item.bgColor}`} style={{borderLeftColor: ''}}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${item.color}`} />
+                      <span className={`text-sm font-black uppercase tracking-wider ${item.textColor}`}>{item.priority}</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {item.rules.map((rule, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                          <span className="text-slate-400 mt-0.5 shrink-0">·</span>
+                          {rule}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* SLA Hours Table */}
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <Clock size={18} className="text-primary" />
+                  <div>
+                    <h3 className="font-black text-slate-800">SLA Countdown (DB Trigger)</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">เวลา SLA คำนวณจาก created_at ของ Ticket</p>
+                  </div>
+                </div>
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="px-5 py-3 text-xs font-black text-slate-400 uppercase tracking-wider">Priority</th>
+                      <th className="px-5 py-3 text-xs font-black text-slate-400 uppercase tracking-wider">SLA เวลา</th>
+                      <th className="px-5 py-3 text-xs font-black text-slate-400 uppercase tracking-wider">หมายเหตุ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {[
+                      { p: 'Critical', hours: '4 ชั่วโมง', note: 'ต้องตอบสนองทันที', color: 'text-red-600 bg-red-50', dot: 'bg-red-500' },
+                      { p: 'High',     hours: '12 ชั่วโมง', note: 'ก่อนสิ้นวันทำการ', color: 'text-orange-600 bg-orange-50', dot: 'bg-orange-500' },
+                      { p: 'Medium',   hours: '24 ชั่วโมง', note: 'ภายใน 1 วัน', color: 'text-amber-600 bg-amber-50', dot: 'bg-amber-500' },
+                      { p: 'Low',      hours: 'ไม่มี SLA', note: 'Best effort basis', color: 'text-slate-500 bg-slate-50', dot: 'bg-slate-300' },
+                    ].map((row) => (
+                      <tr key={row.p} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-5 py-3">
+                          <span className={`flex items-center gap-1.5 text-xs font-black px-2.5 py-1 rounded-full w-fit ${row.color}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${row.dot}`} />
+                            {row.p}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 font-black text-slate-800 text-sm">{row.hours}</td>
+                        <td className="px-5 py-3 text-xs text-slate-500">{row.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="p-4 bg-blue-50 border-t border-blue-100">
+                  <p className="text-xs text-blue-700 font-bold flex items-start gap-1.5">
+                    <Info size={13} className="mt-0.5 shrink-0" />
+                    SLA นับเวลาแบบ Calendar Hours (24/7) ยังไม่รองรับ Business Hours
+                    — หากต้องการให้หยุดนับช่วงกลางคืน/วันหยุด แจ้ง Dev เพื่อปรับ Trigger
+                  </p>
+                </div>
+              </div>
+
+              {/* Where it's calculated */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h4 className="font-black text-slate-700 text-sm mb-3 flex items-center gap-2">
+                  <BookOpen size={16} className="text-slate-400" />
+                  Logic อยู่ที่ไหนในระบบ
+                </h4>
+                <div className="space-y-3">
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">Priority (Client-side)</p>
+                    <code className="text-xs text-primary font-mono">TicketList.tsx → calculatePriority()</code>
+                    <p className="text-xs text-slate-500 mt-1">คำนวณ Priority ณ เวลาสร้าง Ticket ก่อน Submit ไป DB</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">SLA (DB Trigger)</p>
+                    <code className="text-xs text-primary font-mono">trg_calculate_sla() → trg_set_sla</code>
+                    <p className="text-xs text-slate-500 mt-1">Trigger ทำงานอัตโนมัติหลัง INSERT และเมื่อ priority เปลี่ยน</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
@@ -309,7 +485,7 @@ export default function MasterDataAdmin() {
                         <td className="px-8 py-5">
                           <div className="flex flex-col">
                             <span className="text-sm font-bold text-slate-700">{item.specialty || '-'}</span>
-                            <span className="text-[10px] font-black text-primary uppercase tracking-tighter">{item.phone || '-'}</span>
+                            <span className="text-[10px] font-black text-primary uppercase tracking-tighter">{formatPhoneNumber(item.phone) || '-'}</span>
                           </div>
                         </td>
                       </>
@@ -376,7 +552,8 @@ export default function MasterDataAdmin() {
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {modalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
@@ -490,7 +667,7 @@ export default function MasterDataAdmin() {
                       <input 
                         type="text" 
                         value={formData.phone || ''} 
-                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                        onChange={e => setFormData({ ...formData, phone: formatPhoneNumber(e.target.value) })}
                         className="w-full h-14 bg-slate-50 border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl px-5 text-sm font-bold transition-all outline-none"
                         placeholder="เช่น 038-304-201"
                       />

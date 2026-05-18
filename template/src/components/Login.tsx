@@ -189,7 +189,7 @@ export function Login({ onLogin }: LoginProps) {
               full_name: `Demo ${role.toUpperCase()}`,
               role: role,
               company_id: role === 'customer' ? 'wd' : null,
-              department: role === 'customer' ? null : role
+              department: role === 'customer' ? [] : [role]
             });
             
           if (profileError) throw profileError;

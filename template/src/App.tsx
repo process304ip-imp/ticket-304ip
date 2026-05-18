@@ -4,7 +4,7 @@ import { Login } from './components/Login';
 import { OnboardingRegister } from './components/OnboardingRegister';
 import { PwaBanner } from './components/PwaBanner';
 import { Role, getDefaultView } from './data';
-import { requestNotificationPermission, ticketNotify, notify } from './lib/notify';
+import { requestNotificationPermission, ticketNotify, notify, playChime } from './lib/notify';
 import { useAuth } from './hooks/useAuth';
 import { api } from './lib/api';
 import './index.css';
@@ -85,6 +85,15 @@ export default function App() {
       };
       setNotifications(prev => [n, ...prev]);
       
+      // Play contextual chime based on notification type
+      if (n.type === 'assignment') {
+        playChime('new-ticket');
+      } else if (n.type === 'system') {
+        playChime('resolved');
+      } else {
+        playChime('update');
+      }
+
       // Use raw title/body from DB
       notify({
         title: n.title,

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, Lock, Building, MapPin, Mail, Phone, Loader2, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { formatPhoneNumber } from '../lib/utils';
 
 export function UserProfile() {
   const { profile, user } = useAuth();
@@ -81,7 +82,7 @@ export function UserProfile() {
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 font-bold">เบอร์ติดต่อ</p>
-                    <p className="text-sm font-black text-slate-800">{profile.phone || '-'}</p>
+                    <p className="text-sm font-black text-slate-800">{formatPhoneNumber(profile.phone) || '-'}</p>
                   </div>
                 </div>
               </div>

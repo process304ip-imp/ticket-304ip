@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Clock, Download, PieChart, ShieldCheck, TrendingUp, Loader2, Star, Zap, Droplets, Building2, User } from 'lucide-react';
+import { Calendar, Clock, Download, PieChart, ShieldCheck, TrendingUp, Loader2, Star, Zap, Droplets, Building2, User, ChevronDown } from 'lucide-react';
 import { Role } from '../App';
 import { api, Ticket, getAvatarUrl } from '../lib/api';
 import { categoryColors, TicketCategory } from '../data';
@@ -81,7 +81,9 @@ function Donut({ chart, lang }: { chart: DynamicChart; lang: 'TH' | 'EN' }) {
           aria-hidden="true"
         >
           <div className="absolute inset-5 rounded-full bg-white flex items-center justify-center">
-            <span className="text-lg font-black text-primary">100%</span>
+            <span className="text-lg font-black text-primary">
+              {chart.segments.length > 0 ? totalValue : 0}
+            </span>
           </div>
         </div>
         <div className="space-y-3 min-w-0">
@@ -107,6 +109,11 @@ function Donut({ chart, lang }: { chart: DynamicChart; lang: 'TH' | 'EN' }) {
 export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps) {
   const [tickets, setTickets] = React.useState<Ticket[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [dateRangeFilter, setDateRangeFilter] = React.useState<'All'|'ThisMonth'|'LastMonth'|'ThisQuarter'|'Custom'>('ThisMonth');
+  const [customStartDate, setCustomStartDate] = React.useState('');
+  const [customEndDate, setCustomEndDate] = React.useState('');
+  const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = React.useState(false);
   const text = t[lang];
 
   React.useEffect(() => {
@@ -131,12 +138,66 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
     };
   }, []);
 
+  const filteredTickets = React.useMemo(() => {
+    let start = new Date(0);
+    let end = new Date();
+    
+    const now = new Date();
+    if (dateRangeFilter === 'ThisMonth') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (dateRangeFilter === 'LastMonth') {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    } else if (dateRangeFilter === 'ThisQuarter') {
+      const quarter = Math.floor(now.getMonth() / 3);
+      start = new Date(now.getFullYear(), quarter * 3, 1);
+    } else if (dateRangeFilter === 'Custom' && customStartDate && customEndDate) {
+      start = new Date(customStartDate);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
+    }
+    
+    if (dateRangeFilter === 'All') return tickets;
+    
+    return tickets.filter(t => {
+      const d = new Date(t.created_at);
+      return d >= start && d <= end;
+    });
+  }, [tickets, dateRangeFilter, customStartDate, customEndDate]);
+
+  const handleExport = (type: 'csv' | 'sla') => {
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+    
+    if (type === 'csv') {
+      csvContent += "ID,Category,Type,Status,Priority,Area,Created At,SLA Deadline\n";
+      filteredTickets.forEach(t => {
+        csvContent += `"${t.id}","${t.category}","${t.type}","${t.status}","${t.priority}","${t.area || ''}","${new Date(t.created_at).toLocaleString()}","${t.sla_deadline ? new Date(t.sla_deadline).toLocaleString() : ''}"\n`;
+      });
+    } else if (type === 'sla') {
+      csvContent += "ID,Category,Priority,Status,Created At,SLA Deadline,Is Overdue\n";
+      filteredTickets.forEach(t => {
+        const isPastSla = t.sla_deadline ? new Date() > new Date(t.sla_deadline) : false;
+        csvContent += `"${t.id}","${t.category}","${t.priority}","${t.status}","${new Date(t.created_at).toLocaleString()}","${t.sla_deadline ? new Date(t.sla_deadline).toLocaleString() : ''}","${isPastSla ? 'Yes' : 'No'}"\n`;
+      });
+    }
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `304ip_export_${type}_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setIsExportMenuOpen(false);
+  };
+
   const stats = React.useMemo(() => {
-    const open = tickets.filter(t => t.status === 'Open').length;
-    const inProgress = tickets.filter(t => t.status === 'In Progress').length;
-    const resolved = tickets.filter(t => t.status === 'Resolved (Tech)' || t.status === 'Resolved (CRM)').length;
-    const closed = tickets.filter(t => t.status === 'Closed').length;
-    const allFeedback = tickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
+    const open = filteredTickets.filter(t => t.status === 'Open').length;
+    const inProgress = filteredTickets.filter(t => t.status === 'In Progress').length;
+    const resolved = filteredTickets.filter(t => t.status === 'Resolved (Tech)' || t.status === 'Resolved (CRM)').length;
+    const closed = filteredTickets.filter(t => t.status === 'Closed').length;
+    const allFeedback = filteredTickets.map(t => (t as any).ticket_feedback?.[0]).filter(Boolean);
     const avgFix = allFeedback.length > 0 ? (allFeedback.reduce((acc, f) => acc + (f.fix_quality_score || f.score), 0) / allFeedback.length).toFixed(1) : '0.0';
     const avgService = allFeedback.length > 0 ? (allFeedback.reduce((acc, f) => acc + (f.service_quality_score || f.score), 0) / allFeedback.length).toFixed(1) : '0.0';
 
@@ -148,13 +209,13 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
       { label: lang === 'TH' ? 'Fix Quality' : 'Avg. Fix Quality', value: avgFix, tone: 'bg-amber-50 text-amber-700', icon: Star },
       { label: lang === 'TH' ? 'Service Quality' : 'Avg. Service Quality', value: avgService, tone: 'bg-blue-50 text-blue-700', icon: Star },
     ];
-  }, [tickets, lang]);
+  }, [filteredTickets, lang]);
 
   const dynamicCharts = React.useMemo(() => {
-    const total = tickets.length || 1;
+    const total = filteredTickets.length || 1;
 
     // 1. Ticket Classification (Type)
-    const typesMap = tickets.reduce((acc: any, t) => {
+    const typesMap = filteredTickets.reduce((acc: any, t) => {
       const type = t.type || 'Other';
       acc[type] = (acc[type] || 0) + 1;
       return acc;
@@ -167,7 +228,7 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
     ].filter(s => s.value > 0);
 
     // 2. Service Category
-    const catMap = tickets.reduce((acc: any, t) => {
+    const catMap = filteredTickets.reduce((acc: any, t) => {
       const cat = t.category || 'Other';
       acc[cat] = (acc[cat] || 0) + 1;
       return acc;
@@ -180,7 +241,7 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
     ].filter(s => s.value > 0);
 
     // 3. Area Impact
-    const areaMap = tickets.reduce((acc: any, t) => {
+    const areaMap = filteredTickets.reduce((acc: any, t) => {
       const area = t.area || 'N/A';
       acc[area] = (acc[area] || 0) + 1;
       return acc;
@@ -197,16 +258,31 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
       color: areaColors[idx] || '#cbd5e1'
     }));
 
-    // 4. SLA Compliance (Example Logic: Resolved/Closed on time)
-    const onTime = tickets.filter(t => t.status === 'Closed' || t.status === 'Resolved (Tech)' || t.status === 'Resolved (CRM)').length;
+    // 4. SLA Compliance (Real Data Logic)
+    let onTime = 0;
+    let overdue = 0;
+    let pending = 0;
+    
+    filteredTickets.forEach(t => {
+      const isResolved = t.status === 'Closed' || t.status.startsWith('Resolved');
+      const isPastSla = t.sla_deadline ? new Date() > new Date(t.sla_deadline) : false;
+      
+      if (isResolved) {
+        onTime++;
+      } else {
+        if (isPastSla) overdue++;
+        else pending++;
+      }
+    });
+
     const slaSegments = [
-      { label: 'On-time', value: onTime, color: '#10b981' },
-      { label: 'Delayed', value: Math.max(0, tickets.length - onTime - 5), color: '#f59e0b' }, // Mocking some delay
-      { label: 'Overdue', value: 5, color: '#ef4444' },
+      { label: 'Resolved (On-time)', value: onTime, color: '#10b981' },
+      { label: 'In Progress (Within SLA)', value: pending, color: '#3b82f6' },
+      { label: 'SLA Overdue', value: overdue, color: '#ef4444' },
     ].filter(s => s.value > 0);
 
     // 5. Customer Satisfaction (CSAT) - Real Data
-    const allFeedback = tickets
+    const allFeedback = filteredTickets
       .map(t => (t as any).ticket_feedback?.[0])
       .filter(Boolean);
 
@@ -244,10 +320,10 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
         segments: areaSegments,
       },
     ];
-  }, [tickets]);
+  }, [filteredTickets]);
 
-  const criticalTickets = tickets.filter((ticket) => ticket.priority === 'Critical' && ticket.status !== 'Closed');
-  const resolvedTickets = tickets.filter((ticket) => ticket.status === 'Resolved (Tech)' || ticket.status === 'Resolved (CRM)');
+  const criticalTickets = filteredTickets.filter((ticket) => ticket.priority === 'Critical' && ticket.status !== 'Closed');
+  const resolvedTickets = filteredTickets.filter((ticket) => ticket.status === 'Resolved (Tech)' || ticket.status === 'Resolved (CRM)');
 
   if (role === 'customer') {
     return (
@@ -283,15 +359,70 @@ export function Dashboard({ role, onSelectTicket, lang = 'TH' }: DashboardProps)
           <h2 className="text-2xl md:text-3xl font-black text-primary tracking-tight">{text.title}</h2>
           <p className="text-sm text-slate-500 mt-2 max-w-2xl">{text.description}</p>
         </div>
-        <div className="flex gap-3">
-          <button className="px-4 py-2 bg-white border border-slate-200 text-primary font-bold rounded-lg text-sm hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm">
-            <Calendar size={16} />
-            เม.ย. 2026
-          </button>
-          <button className="px-4 py-2 bg-primary text-white font-bold rounded-lg text-sm hover:bg-primary-container transition-colors flex items-center gap-2 shadow-sm">
-            <Download size={16} />
-            {text.export}
-          </button>
+        <div className="flex gap-3 relative z-40">
+          {/* Date Picker Dropdown */}
+          <div className="relative">
+            <button 
+              onClick={() => { setIsDatePickerOpen(!isDatePickerOpen); setIsExportMenuOpen(false); }}
+              className="px-4 py-2 bg-white border border-slate-200 text-primary font-bold rounded-lg text-sm hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <Calendar size={16} />
+              {dateRangeFilter === 'All' && 'ทั้งหมด'}
+              {dateRangeFilter === 'ThisMonth' && 'เดือนนี้'}
+              {dateRangeFilter === 'LastMonth' && 'เดือนที่แล้ว'}
+              {dateRangeFilter === 'ThisQuarter' && 'ไตรมาสนี้'}
+              {dateRangeFilter === 'Custom' && 'กำหนดเอง'}
+              <ChevronDown size={14} className="ml-1" />
+            </button>
+
+            {isDatePickerOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-100 p-2">
+                <div className="space-y-1">
+                  <button onClick={() => { setDateRangeFilter('All'); setIsDatePickerOpen(false); }} className={`w-full text-left px-4 py-2 text-sm rounded-lg hover:bg-slate-50 ${dateRangeFilter === 'All' ? 'bg-primary/5 text-primary font-bold' : 'text-slate-700'}`}>ทั้งหมด</button>
+                  <button onClick={() => { setDateRangeFilter('ThisMonth'); setIsDatePickerOpen(false); }} className={`w-full text-left px-4 py-2 text-sm rounded-lg hover:bg-slate-50 ${dateRangeFilter === 'ThisMonth' ? 'bg-primary/5 text-primary font-bold' : 'text-slate-700'}`}>เดือนนี้</button>
+                  <button onClick={() => { setDateRangeFilter('LastMonth'); setIsDatePickerOpen(false); }} className={`w-full text-left px-4 py-2 text-sm rounded-lg hover:bg-slate-50 ${dateRangeFilter === 'LastMonth' ? 'bg-primary/5 text-primary font-bold' : 'text-slate-700'}`}>เดือนที่แล้ว</button>
+                  <button onClick={() => { setDateRangeFilter('ThisQuarter'); setIsDatePickerOpen(false); }} className={`w-full text-left px-4 py-2 text-sm rounded-lg hover:bg-slate-50 ${dateRangeFilter === 'ThisQuarter' ? 'bg-primary/5 text-primary font-bold' : 'text-slate-700'}`}>ไตรมาสนี้</button>
+                  <button onClick={() => setDateRangeFilter('Custom')} className={`w-full text-left px-4 py-2 text-sm rounded-lg hover:bg-slate-50 ${dateRangeFilter === 'Custom' ? 'bg-primary/5 text-primary font-bold' : 'text-slate-700'}`}>กำหนดเอง...</button>
+                </div>
+                {dateRangeFilter === 'Custom' && (
+                  <div className="mt-3 pt-3 border-t border-slate-100 px-2 space-y-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">เริ่มวันที่</label>
+                      <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} className="w-full form-field text-sm p-2" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">ถึงวันที่</label>
+                      <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} className="w-full form-field text-sm p-2" />
+                    </div>
+                    <button onClick={() => setIsDatePickerOpen(false)} className="w-full btn-primary py-2 text-sm">นำไปใช้</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Export Dropdown */}
+          <div className="relative">
+            <button 
+              onClick={() => { setIsExportMenuOpen(!isExportMenuOpen); setIsDatePickerOpen(false); }}
+              className="px-4 py-2 bg-primary text-white font-bold rounded-lg text-sm hover:bg-primary-container transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <Download size={16} />
+              {text.export}
+              <ChevronDown size={14} className="ml-1" />
+            </button>
+
+            {isExportMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 p-2 space-y-1">
+                <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-primary rounded-lg font-medium transition-colors">
+                  Export ข้อมูล Ticket
+                </button>
+                <button onClick={() => handleExport('sla')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-primary rounded-lg font-medium transition-colors">
+                  Export รายงาน SLA
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </section>
 

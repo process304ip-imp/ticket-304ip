@@ -38,7 +38,7 @@ export function StaffManagement() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
-  const { toast } = useToast();
+  const { toast, confirm } = useToast();
 
   const fetchStaff = async () => {
     setLoading(true);
@@ -94,6 +94,19 @@ export function StaffManagement() {
 
   const handleToggleStatus = async (userId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'rejected' ? 'active' : 'rejected';
+    const user = staff.find(s => s.id === userId);
+    const isSuspending = newStatus === 'rejected';
+
+    const ok = await confirm({
+      title: isSuspending ? 'ยืนยันการระงับสิทธิ์' : 'ยืนยันการเปิดใช้งาน',
+      message: isSuspending
+        ? `ระงับสิทธิ์การเข้าใช้งานของ "${user?.full_name || user?.email}" ใช่หรือไม่? ผู้ใช้จะไม่สามารถล็อกอินได้ทันที`
+        : `เปิดใช้งานบัญชีของ "${user?.full_name || user?.email}" อีกครั้ง ใช่หรือไม่?`,
+      confirmLabel: isSuspending ? 'ระงับสิทธิ์' : 'เปิดใช้งาน',
+      danger: isSuspending,
+    });
+    if (!ok) return;
+
     try {
       const { error } = await supabase
         .from('user_profiles')
@@ -112,6 +125,17 @@ export function StaffManagement() {
   };
 
   const handleSaveRole = async (userId: string) => {
+    const user = staff.find(s => s.id === userId);
+    const oldRole = ROLE_OPTIONS.find(r => r.value === user?.role)?.label || user?.role;
+    const newRole = ROLE_OPTIONS.find(r => r.value === editRole)?.label || editRole;
+
+    const ok = await confirm({
+      title: 'ยืนยันการเปลี่ยน Role',
+      message: `เปลี่ยน Role ของ "${user?.full_name || user?.email}" จาก ${oldRole} → ${newRole} ใช่หรือไม่?`,
+      confirmLabel: 'บันทึก',
+    });
+    if (!ok) return;
+
     setSavingId(userId);
     try {
       const { error } = await supabase

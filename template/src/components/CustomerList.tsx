@@ -3,6 +3,7 @@ import { CheckCircle2, Copy, Mail, Phone, Plus, QrCode, Search, Send, UserPlus, 
 import { QRCodeSVG } from 'qrcode.react';
 import { api, CompanyWithStatus } from '../lib/api';
 import { useToast } from './Toast';
+import { formatPhoneNumber } from '../lib/utils';
 
 const generateId = () => {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // Exclude 0, 1, O, I for clarity
@@ -233,7 +234,7 @@ export function CustomerList() {
                     <td className="p-4">
                       <p className="text-sm font-bold text-slate-800">{company.contact_name || '-'}</p>
                       <div className="flex flex-col gap-1 mt-1 text-xs text-slate-500">
-                        {company.phone && <span className="flex items-center gap-1.5"><Phone size={12} />{company.phone}</span>}
+                        {company.phone && <span className="flex items-center gap-1.5"><Phone size={12} />{formatPhoneNumber(company.phone)}</span>}
                         {company.email && <span className="flex items-center gap-1.5"><Mail size={12} />{company.email}</span>}
                       </div>
                     </td>
@@ -313,7 +314,7 @@ export function CustomerList() {
                   </div>
                   {(company.phone || company.email) && (
                     <div className="col-span-2 pt-1 mt-1 border-t border-slate-200">
-                      {company.phone && <p className="text-xs text-slate-600 flex items-center gap-1.5"><Phone size={10} />{company.phone}</p>}
+                      {company.phone && <p className="text-xs text-slate-600 flex items-center gap-1.5"><Phone size={10} />{formatPhoneNumber(company.phone)}</p>}
                       {company.email && <p className="text-xs text-slate-600 flex items-center gap-1.5 mt-0.5"><Mail size={10} />{company.email}</p>}
                     </div>
                   )}
@@ -390,7 +391,7 @@ export function CustomerList() {
                   <input className="w-full form-field" placeholder="ชื่อผู้ติดต่อ" value={formData.contact_name || ''} onChange={e => setFormData(p => p ? {...p, contact_name: e.target.value} : p)} />
                 </Field>
                 <Field label="Phone">
-                  <input className="w-full form-field" placeholder="08X-XXX-XXXX" value={formData.phone || ''} onChange={e => setFormData(p => p ? {...p, phone: e.target.value} : p)} />
+                  <input className="w-full form-field" placeholder="08X-XXX-XXXX" value={formData.phone || ''} onChange={e => setFormData(p => p ? {...p, phone: formatPhoneNumber(e.target.value)} : p)} />
                 </Field>
                 <Field label="EMAIL">
                   <input type="email" value={formData.email || ''} onChange={(e) => setFormData(p => p ? {...p, email: e.target.value} : p)} className="w-full form-field" placeholder="example@email.com" />
