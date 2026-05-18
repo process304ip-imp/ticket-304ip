@@ -1,1 +1,780 @@
-{"types":"export type Json =\n  | string\n  | number\n  | boolean\n  | null\n  | { [key: string]: Json | undefined }\n  | Json[]\n\nexport type Database = {\n  // Allows to automatically instantiate createClient with right options\n  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)\n  __InternalSupabase: {\n    PostgrestVersion: \"14.5\"\n  }\n  public: {\n    Tables: {\n      categories: {\n        Row: {\n          created_at: string | null\n          id: string\n          is_active: boolean | null\n          name: string\n        }\n        Insert: {\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          name: string\n        }\n        Update: {\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          name?: string\n        }\n        Relationships: []\n      }\n      companies: {\n        Row: {\n          area: string\n          contact_name: string | null\n          created_at: string | null\n          email: string | null\n          id: string\n          name: string\n          phone: string | null\n          registration_link: string | null\n        }\n        Insert: {\n          area: string\n          contact_name?: string | null\n          created_at?: string | null\n          email?: string | null\n          id: string\n          name: string\n          phone?: string | null\n          registration_link?: string | null\n        }\n        Update: {\n          area?: string\n          contact_name?: string | null\n          created_at?: string | null\n          email?: string | null\n          id?: string\n          name?: string\n          phone?: string | null\n          registration_link?: string | null\n        }\n        Relationships: []\n      }\n      notifications: {\n        Row: {\n          created_at: string | null\n          id: string\n          is_read: boolean | null\n          message: string\n          title: string\n          type: string | null\n          user_id: string | null\n        }\n        Insert: {\n          created_at?: string | null\n          id?: string\n          is_read?: boolean | null\n          message: string\n          title: string\n          type?: string | null\n          user_id?: string | null\n        }\n        Update: {\n          created_at?: string | null\n          id?: string\n          is_read?: boolean | null\n          message?: string\n          title?: string\n          type?: string | null\n          user_id?: string | null\n        }\n        Relationships: []\n      }\n      quick_templates: {\n        Row: {\n          category_id: string | null\n          created_at: string | null\n          id: string\n          is_active: boolean | null\n          target_status: string | null\n          template_text: string\n        }\n        Insert: {\n          category_id?: string | null\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          target_status?: string | null\n          template_text: string\n        }\n        Update: {\n          category_id?: string | null\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          target_status?: string | null\n          template_text?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"quick_templates_category_id_fkey\"\n            columns: [\"category_id\"]\n            isOneToOne: false\n            referencedRelation: \"categories\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      response_teams: {\n        Row: {\n          area: string | null\n          id: string\n          is_active: boolean | null\n          name: string\n          phone: string | null\n          role_label: string | null\n          specialty: string | null\n          status: string | null\n          updated_at: string | null\n        }\n        Insert: {\n          area?: string | null\n          id: string\n          is_active?: boolean | null\n          name: string\n          phone?: string | null\n          role_label?: string | null\n          specialty?: string | null\n          status?: string | null\n          updated_at?: string | null\n        }\n        Update: {\n          area?: string | null\n          id?: string\n          is_active?: boolean | null\n          name?: string\n          phone?: string | null\n          role_label?: string | null\n          specialty?: string | null\n          status?: string | null\n          updated_at?: string | null\n        }\n        Relationships: []\n      }\n      staff_badges: {\n        Row: {\n          badge_slug: string\n          earned_at: string | null\n          user_id: string\n        }\n        Insert: {\n          badge_slug: string\n          earned_at?: string | null\n          user_id: string\n        }\n        Update: {\n          badge_slug?: string\n          earned_at?: string | null\n          user_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"staff_badges_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"user_profiles\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      staff_scores: {\n        Row: {\n          action: string\n          created_at: string | null\n          id: string\n          month_year: string\n          note: string | null\n          points: number\n          ticket_id: string | null\n          user_id: string | null\n        }\n        Insert: {\n          action: string\n          created_at?: string | null\n          id?: string\n          month_year: string\n          note?: string | null\n          points: number\n          ticket_id?: string | null\n          user_id?: string | null\n        }\n        Update: {\n          action?: string\n          created_at?: string | null\n          id?: string\n          month_year?: string\n          note?: string | null\n          points?: number\n          ticket_id?: string | null\n          user_id?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"staff_scores_ticket_id_fkey\"\n            columns: [\"ticket_id\"]\n            isOneToOne: false\n            referencedRelation: \"tickets\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"staff_scores_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"user_profiles\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      sub_categories: {\n        Row: {\n          category_id: string | null\n          created_at: string | null\n          id: string\n          is_active: boolean | null\n          name: string\n        }\n        Insert: {\n          category_id?: string | null\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          name: string\n        }\n        Update: {\n          category_id?: string | null\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          name?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"sub_categories_category_id_fkey\"\n            columns: [\"category_id\"]\n            isOneToOne: false\n            referencedRelation: \"categories\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      ticket_affected_companies: {\n        Row: {\n          company_id: string\n          ticket_id: string\n        }\n        Insert: {\n          company_id: string\n          ticket_id: string\n        }\n        Update: {\n          company_id?: string\n          ticket_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"ticket_affected_companies_company_id_fkey\"\n            columns: [\"company_id\"]\n            isOneToOne: false\n            referencedRelation: \"companies\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"ticket_affected_companies_ticket_id_fkey\"\n            columns: [\"ticket_id\"]\n            isOneToOne: false\n            referencedRelation: \"tickets\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      ticket_counters: {\n        Row: {\n          last_value: number\n          ticket_date: string\n        }\n        Insert: {\n          last_value?: number\n          ticket_date: string\n        }\n        Update: {\n          last_value?: number\n          ticket_date?: string\n        }\n        Relationships: []\n      }\n      ticket_feedback: {\n        Row: {\n          comment: string | null\n          fix_quality_comment: string | null\n          fix_quality_score: number | null\n          id: string\n          score: number\n          service_quality_comment: string | null\n          service_quality_score: number | null\n          submitted_at: string | null\n          submitted_by: string | null\n          ticket_id: string\n        }\n        Insert: {\n          comment?: string | null\n          fix_quality_comment?: string | null\n          fix_quality_score?: number | null\n          id?: string\n          score: number\n          service_quality_comment?: string | null\n          service_quality_score?: number | null\n          submitted_at?: string | null\n          submitted_by?: string | null\n          ticket_id: string\n        }\n        Update: {\n          comment?: string | null\n          fix_quality_comment?: string | null\n          fix_quality_score?: number | null\n          id?: string\n          score?: number\n          service_quality_comment?: string | null\n          service_quality_score?: number | null\n          submitted_at?: string | null\n          submitted_by?: string | null\n          ticket_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"ticket_feedback_submitted_by_fkey\"\n            columns: [\"submitted_by\"]\n            isOneToOne: false\n            referencedRelation: \"user_profiles\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"ticket_feedback_ticket_id_fkey\"\n            columns: [\"ticket_id\"]\n            isOneToOne: false\n            referencedRelation: \"tickets\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      ticket_logs: {\n        Row: {\n          author_id: string | null\n          author_name: string | null\n          author_role: string | null\n          id: string\n          is_internal: boolean | null\n          media_urls: string[] | null\n          message: string\n          status_from: string | null\n          status_to: string | null\n          ticket_id: string\n          timestamp: string | null\n        }\n        Insert: {\n          author_id?: string | null\n          author_name?: string | null\n          author_role?: string | null\n          id?: string\n          is_internal?: boolean | null\n          media_urls?: string[] | null\n          message: string\n          status_from?: string | null\n          status_to?: string | null\n          ticket_id: string\n          timestamp?: string | null\n        }\n        Update: {\n          author_id?: string | null\n          author_name?: string | null\n          author_role?: string | null\n          id?: string\n          is_internal?: boolean | null\n          media_urls?: string[] | null\n          message?: string\n          status_from?: string | null\n          status_to?: string | null\n          ticket_id?: string\n          timestamp?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"ticket_logs_author_id_fkey\"\n            columns: [\"author_id\"]\n            isOneToOne: false\n            referencedRelation: \"user_profiles\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"ticket_logs_ticket_id_fkey\"\n            columns: [\"ticket_id\"]\n            isOneToOne: false\n            referencedRelation: \"tickets\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      tickets: {\n        Row: {\n          area: string | null\n          assignee: string | null\n          auto_close_at: string | null\n          category: string\n          category_id: string | null\n          channel: string | null\n          company_id: string | null\n          company_name: string | null\n          contact_name: string | null\n          contact_phone: string | null\n          created_at: string | null\n          created_by: string | null\n          description: string | null\n          duration_min: number | null\n          id: string\n          impact_radius_meters: number | null\n          lat: number | null\n          lng: number | null\n          location_text: string | null\n          priority: string\n          resolved_at: string | null\n          resolved_crm_at: string | null\n          responder_id: string | null\n          sla_due_at: string | null\n          status: string\n          sub_category: string | null\n          sub_category_id: string | null\n          type: string\n        }\n        Insert: {\n          area?: string | null\n          assignee?: string | null\n          auto_close_at?: string | null\n          category: string\n          category_id?: string | null\n          channel?: string | null\n          company_id?: string | null\n          company_name?: string | null\n          contact_name?: string | null\n          contact_phone?: string | null\n          created_at?: string | null\n          created_by?: string | null\n          description?: string | null\n          duration_min?: number | null\n          id: string\n          impact_radius_meters?: number | null\n          lat?: number | null\n          lng?: number | null\n          location_text?: string | null\n          priority?: string\n          resolved_at?: string | null\n          resolved_crm_at?: string | null\n          responder_id?: string | null\n          sla_due_at?: string | null\n          status?: string\n          sub_category?: string | null\n          sub_category_id?: string | null\n          type: string\n        }\n        Update: {\n          area?: string | null\n          assignee?: string | null\n          auto_close_at?: string | null\n          category?: string\n          category_id?: string | null\n          channel?: string | null\n          company_id?: string | null\n          company_name?: string | null\n          contact_name?: string | null\n          contact_phone?: string | null\n          created_at?: string | null\n          created_by?: string | null\n          description?: string | null\n          duration_min?: number | null\n          id?: string\n          impact_radius_meters?: number | null\n          lat?: number | null\n          lng?: number | null\n          location_text?: string | null\n          priority?: string\n          resolved_at?: string | null\n          resolved_crm_at?: string | null\n          responder_id?: string | null\n          sla_due_at?: string | null\n          status?: string\n          sub_category?: string | null\n          sub_category_id?: string | null\n          type?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"tickets_category_id_fkey\"\n            columns: [\"category_id\"]\n            isOneToOne: false\n            referencedRelation: \"categories\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"tickets_company_id_fkey\"\n            columns: [\"company_id\"]\n            isOneToOne: false\n            referencedRelation: \"companies\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"tickets_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"user_profiles\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"tickets_responder_id_fkey\"\n            columns: [\"responder_id\"]\n            isOneToOne: false\n            referencedRelation: \"user_profiles\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"tickets_sub_category_id_fkey\"\n            columns: [\"sub_category_id\"]\n            isOneToOne: false\n            referencedRelation: \"sub_categories\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      user_profiles: {\n        Row: {\n          company_id: string | null\n          created_at: string | null\n          department: string[] | null\n          email: string | null\n          emp_id: string | null\n          full_name: string | null\n          id: string\n          phone: string | null\n          role: string\n          status: string | null\n          teams: string[] | null\n        }\n        Insert: {\n          company_id?: string | null\n          created_at?: string | null\n          department?: string[] | null\n          email?: string | null\n          emp_id?: string | null\n          full_name?: string | null\n          id: string\n          phone?: string | null\n          role?: string\n          status?: string | null\n          teams?: string[] | null\n        }\n        Update: {\n          company_id?: string | null\n          created_at?: string | null\n          department?: string[] | null\n          email?: string | null\n          emp_id?: string | null\n          full_name?: string | null\n          id?: string\n          phone?: string | null\n          role?: string\n          status?: string | null\n          teams?: string[] | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"user_profiles_company_id_fkey\"\n            columns: [\"company_id\"]\n            isOneToOne: false\n            referencedRelation: \"companies\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n    }\n    Views: {\n      staff_monthly_scores: {\n        Row: {\n          csat_5star_count: number | null\n          csat_bad_count: number | null\n          event_count: number | null\n          month_year: string | null\n          tickets_closed_on_time: number | null\n          total_points: number | null\n          user_id: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"staff_scores_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"user_profiles\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n    }\n    Functions: {\n      check_user_exists: { Args: { email_to_check: string }; Returns: boolean }\n      check_user_exists_by_company: { Args: { cid: string }; Returns: boolean }\n      get_masked_profile_by_company: {\n        Args: { cid: string }\n        Returns: {\n          masked_phone: string\n          user_email: string\n          user_full_name: string\n          user_id: string\n        }[]\n      }\n      get_my_role: { Args: never; Returns: string }\n    }\n    Enums: {\n      [_ in never]: never\n    }\n    CompositeTypes: {\n      [_ in never]: never\n    }\n  }\n}\n\ntype DatabaseWithoutInternals = Omit<Database, \"__InternalSupabase\">\n\ntype DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, \"public\">]\n\nexport type Tables<\n  DefaultSchemaTableNameOrOptions extends\n    | keyof (DefaultSchema[\"Tables\"] & DefaultSchema[\"Views\"])\n    | { schema: keyof DatabaseWithoutInternals },\n  TableName extends DefaultSchemaTableNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"] &\n        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Views\"])\n    : never = never,\n> = DefaultSchemaTableNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"] &\n      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Views\"])[TableName] extends {\n      Row: infer R\n    }\n    ? R\n    : never\n  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema[\"Tables\"] &\n        DefaultSchema[\"Views\"])\n    ? (DefaultSchema[\"Tables\"] &\n        DefaultSchema[\"Views\"])[DefaultSchemaTableNameOrOptions] extends {\n        Row: infer R\n      }\n      ? R\n      : never\n    : never\n\nexport type TablesInsert<\n  DefaultSchemaTableNameOrOptions extends\n    | keyof DefaultSchema[\"Tables\"]\n    | { schema: keyof DatabaseWithoutInternals },\n  TableName extends DefaultSchemaTableNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"]\n    : never = never,\n> = DefaultSchemaTableNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"][TableName] extends {\n      Insert: infer I\n    }\n    ? I\n    : never\n  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema[\"Tables\"]\n    ? DefaultSchema[\"Tables\"][DefaultSchemaTableNameOrOptions] extends {\n        Insert: infer I\n      }\n      ? I\n      : never\n    : never\n\nexport type TablesUpdate<\n  DefaultSchemaTableNameOrOptions extends\n    | keyof DefaultSchema[\"Tables\"]\n    | { schema: keyof DatabaseWithoutInternals },\n  TableName extends DefaultSchemaTableNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"]\n    : never = never,\n> = DefaultSchemaTableNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"][TableName] extends {\n      Update: infer U\n    }\n    ? U\n    : never\n  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema[\"Tables\"]\n    ? DefaultSchema[\"Tables\"][DefaultSchemaTableNameOrOptions] extends {\n        Update: infer U\n      }\n      ? U\n      : never\n    : never\n\nexport type Enums<\n  DefaultSchemaEnumNameOrOptions extends\n    | keyof DefaultSchema[\"Enums\"]\n    | { schema: keyof DatabaseWithoutInternals },\n  EnumName extends DefaultSchemaEnumNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions[\"schema\"]][\"Enums\"]\n    : never = never,\n> = DefaultSchemaEnumNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions[\"schema\"]][\"Enums\"][EnumName]\n  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema[\"Enums\"]\n    ? DefaultSchema[\"Enums\"][DefaultSchemaEnumNameOrOptions]\n    : never\n\nexport type CompositeTypes<\n  PublicCompositeTypeNameOrOptions extends\n    | keyof DefaultSchema[\"CompositeTypes\"]\n    | { schema: keyof DatabaseWithoutInternals },\n  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions[\"schema\"]][\"CompositeTypes\"]\n    : never = never,\n> = PublicCompositeTypeNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions[\"schema\"]][\"CompositeTypes\"][CompositeTypeName]\n  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema[\"CompositeTypes\"]\n    ? DefaultSchema[\"CompositeTypes\"][PublicCompositeTypeNameOrOptions]\n    : never\n\nexport const Constants = {\n  public: {\n    Enums: {},\n  },\n} as const\n"}
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  public: {
+    Tables: {
+      categories: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
+      companies: {
+        Row: {
+          area: string
+          contact_name: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          registration_link: string | null
+        }
+        Insert: {
+          area: string
+          contact_name?: string | null
+          created_at?: string | null
+          email?: string | null
+          id: string
+          name: string
+          phone?: string | null
+          registration_link?: string | null
+        }
+        Update: {
+          area?: string
+          contact_name?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          registration_link?: string | null
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          title: string
+          type: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          title: string
+          type?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          title?: string
+          type?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      quick_templates: {
+        Row: {
+          category_id: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          target_status: string | null
+          template_text: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          target_status?: string | null
+          template_text: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          target_status?: string | null
+          template_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quick_templates_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      response_teams: {
+        Row: {
+          area: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          phone: string | null
+          role_label: string | null
+          specialty: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          area?: string | null
+          id: string
+          is_active?: boolean | null
+          name: string
+          phone?: string | null
+          role_label?: string | null
+          specialty?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          area?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          phone?: string | null
+          role_label?: string | null
+          specialty?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      staff_badges: {
+        Row: {
+          badge_slug: string
+          earned_at: string | null
+          user_id: string
+        }
+        Insert: {
+          badge_slug: string
+          earned_at?: string | null
+          user_id: string
+        }
+        Update: {
+          badge_slug?: string
+          earned_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_badges_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_scores: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          month_year: string
+          note: string | null
+          points: number
+          ticket_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          month_year: string
+          note?: string | null
+          points: number
+          ticket_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          month_year?: string
+          note?: string | null
+          points?: number
+          ticket_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_scores_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_scores_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sub_categories: {
+        Row: {
+          category_id: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sub_categories_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_affected_companies: {
+        Row: {
+          company_id: string
+          ticket_id: string
+        }
+        Insert: {
+          company_id: string
+          ticket_id: string
+        }
+        Update: {
+          company_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_affected_companies_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_affected_companies_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_counters: {
+        Row: {
+          last_value: number
+          ticket_date: string
+        }
+        Insert: {
+          last_value?: number
+          ticket_date: string
+        }
+        Update: {
+          last_value?: number
+          ticket_date?: string
+        }
+        Relationships: []
+      }
+      ticket_feedback: {
+        Row: {
+          comment: string | null
+          fix_quality_comment: string | null
+          fix_quality_score: number | null
+          id: string
+          score: number
+          service_quality_comment: string | null
+          service_quality_score: number | null
+          submitted_at: string | null
+          submitted_by: string | null
+          ticket_id: string
+        }
+        Insert: {
+          comment?: string | null
+          fix_quality_comment?: string | null
+          fix_quality_score?: number | null
+          id?: string
+          score: number
+          service_quality_comment?: string | null
+          service_quality_score?: number | null
+          submitted_at?: string | null
+          submitted_by?: string | null
+          ticket_id: string
+        }
+        Update: {
+          comment?: string | null
+          fix_quality_comment?: string | null
+          fix_quality_score?: number | null
+          id?: string
+          score?: number
+          service_quality_comment?: string | null
+          service_quality_score?: number | null
+          submitted_at?: string | null
+          submitted_by?: string | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_feedback_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_feedback_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_logs: {
+        Row: {
+          author_id: string | null
+          author_name: string | null
+          author_role: string | null
+          id: string
+          is_internal: boolean | null
+          media_urls: string[] | null
+          message: string
+          status_from: string | null
+          status_to: string | null
+          ticket_id: string
+          timestamp: string | null
+        }
+        Insert: {
+          author_id?: string | null
+          author_name?: string | null
+          author_role?: string | null
+          id?: string
+          is_internal?: boolean | null
+          media_urls?: string[] | null
+          message: string
+          status_from?: string | null
+          status_to?: string | null
+          ticket_id: string
+          timestamp?: string | null
+        }
+        Update: {
+          author_id?: string | null
+          author_name?: string | null
+          author_role?: string | null
+          id?: string
+          is_internal?: boolean | null
+          media_urls?: string[] | null
+          message?: string
+          status_from?: string | null
+          status_to?: string | null
+          ticket_id?: string
+          timestamp?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_logs_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_logs_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tickets: {
+        Row: {
+          area: string | null
+          assignee: string | null
+          auto_close_at: string | null
+          category: string
+          category_id: string | null
+          channel: string | null
+          company_id: string | null
+          company_name: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          duration_min: number | null
+          id: string
+          impact_radius_meters: number | null
+          lat: number | null
+          lng: number | null
+          location_text: string | null
+          priority: string
+          resolved_at: string | null
+          resolved_crm_at: string | null
+          responder_id: string | null
+          sla_due_at: string | null
+          status: string
+          sub_category: string | null
+          sub_category_id: string | null
+          type: string
+        }
+        Insert: {
+          area?: string | null
+          assignee?: string | null
+          auto_close_at?: string | null
+          category: string
+          category_id?: string | null
+          channel?: string | null
+          company_id?: string | null
+          company_name?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          duration_min?: number | null
+          id: string
+          impact_radius_meters?: number | null
+          lat?: number | null
+          lng?: number | null
+          location_text?: string | null
+          priority?: string
+          resolved_at?: string | null
+          resolved_crm_at?: string | null
+          responder_id?: string | null
+          sla_due_at?: string | null
+          status?: string
+          sub_category?: string | null
+          sub_category_id?: string | null
+          type: string
+        }
+        Update: {
+          area?: string | null
+          assignee?: string | null
+          auto_close_at?: string | null
+          category?: string
+          category_id?: string | null
+          channel?: string | null
+          company_id?: string | null
+          company_name?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          duration_min?: number | null
+          id?: string
+          impact_radius_meters?: number | null
+          lat?: number | null
+          lng?: number | null
+          location_text?: string | null
+          priority?: string
+          resolved_at?: string | null
+          resolved_crm_at?: string | null
+          responder_id?: string | null
+          sla_due_at?: string | null
+          status?: string
+          sub_category?: string | null
+          sub_category_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tickets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_responder_id_fkey"
+            columns: ["responder_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_sub_category_id_fkey"
+            columns: ["sub_category_id"]
+            isOneToOne: false
+            referencedRelation: "sub_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_profiles: {
+        Row: {
+          company_id: string | null
+          created_at: string | null
+          department: string[] | null
+          email: string | null
+          emp_id: string | null
+          full_name: string | null
+          id: string
+          phone: string | null
+          role: string
+          status: string | null
+          teams: string[] | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string | null
+          department?: string[] | null
+          email?: string | null
+          emp_id?: string | null
+          full_name?: string | null
+          id: string
+          phone?: string | null
+          role?: string
+          status?: string | null
+          teams?: string[] | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string | null
+          department?: string[] | null
+          email?: string | null
+          emp_id?: string | null
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          role?: string
+          status?: string | null
+          teams?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      staff_monthly_scores: {
+        Row: {
+          csat_5star_count: number | null
+          csat_bad_count: number | null
+          event_count: number | null
+          month_year: string | null
+          tickets_closed_on_time: number | null
+          total_points: number | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_scores_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Functions: {
+      check_user_exists: { Args: { email_to_check: string }; Returns: boolean }
+      check_user_exists_by_company: { Args: { cid: string }; Returns: boolean }
+      get_masked_profile_by_company: {
+        Args: { cid: string }
+        Returns: {
+          masked_phone: string
+          user_email: string
+          user_full_name: string
+          user_id: string
+        }[]
+      }
+      get_my_role: { Args: never; Returns: string }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
