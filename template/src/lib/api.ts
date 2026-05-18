@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { Database } from '../types/supabase';
+import { uploadToR2, deleteFromR2, detectStorageProvider } from './r2-upload';
 
 export type Ticket = Database['public']['Tables']['tickets']['Row'];
 export type TicketLog = Database['public']['Tables']['ticket_logs']['Row'];
@@ -161,30 +162,40 @@ export const api = {
     async delete(id: string) {
       // Fetch logs to extract media urls
       const { data: logs } = await supabase.from('ticket_logs').select('media_urls').eq('ticket_id', id);
-      
-      // Gather all attachment paths
-      const pathsToDelete: string[] = [];
+
+      // Separate files by storage provider (Hybrid mode)
+      const supabasePaths: string[] = [];
+      const r2Urls: string[] = [];
+
       if (logs) {
         logs.forEach(log => {
-          if (log.media_urls) {
-            log.media_urls.forEach(url => {
+          (log.media_urls || []).forEach((url: string) => {
+            const provider = detectStorageProvider(url);
+            if (provider === 'supabase') {
               const parts = url.split('/ticket-attachments/');
-              if (parts.length > 1) {
-                pathsToDelete.push(parts[1]);
-              }
-            });
-          }
+              if (parts.length > 1) supabasePaths.push(parts[1]);
+            } else if (provider === 'r2') {
+              r2Urls.push(url);
+            }
+          });
         });
       }
 
-      // Delete storage files
-      if (pathsToDelete.length > 0) {
-        await supabase.storage.from('ticket-attachments').remove(pathsToDelete);
+      // Delete Supabase Storage files (legacy)
+      if (supabasePaths.length > 0) {
+        await supabase.storage.from('ticket-attachments').remove(supabasePaths);
+      }
+
+      // Delete R2 files
+      for (const url of r2Urls) {
+        await deleteFromR2(url).catch(err =>
+          console.warn('[Delete] R2 file delete failed (non-critical):', url, err)
+        );
       }
 
       // Delete logs first just in case there is no cascade set up
       await supabase.from('ticket_logs').delete().eq('ticket_id', id);
-      
+
       // Delete the ticket
       const { error } = await supabase.from('tickets').delete().eq('id', id);
       if (error) throw error;
@@ -429,19 +440,29 @@ export const api = {
     }
   },
   storage: {
-    async uploadAttachment(ticketId: string, file: File) {
+    async uploadAttachment(ticketId: string, file: File): Promise<string> {
+      // Try R2 first (primary storage)
+      try {
+        const url = await uploadToR2(file, ticketId);
+        console.log('[Upload] provider: r2', file.type, `${Math.round(file.size / 1024)}KB`);
+        return url;
+      } catch (r2Error) {
+        console.warn('[Upload] R2 failed, falling back to Supabase:', r2Error);
+      }
+
+      // Fallback: Supabase Storage (legacy bucket)
       const fileExt = file.name.split('.').pop();
       const fileName = `${ticketId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('ticket-attachments')
         .upload(fileName, file);
-        
       if (error) throw error;
-      
+
       const { data: { publicUrl } } = supabase.storage
         .from('ticket-attachments')
         .getPublicUrl(fileName);
-        
+
+      console.log('[Upload] provider: supabase (fallback)', file.type);
       return publicUrl;
     }
   },

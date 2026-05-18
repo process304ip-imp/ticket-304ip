@@ -3,6 +3,10 @@
   command = "npm install && npm run build"
   publish = "dist"
 
+[functions]
+  directory = "netlify/functions"
+
+
 [[redirects]]
   from = "/api/idms/*"
   to = "http://mobiledev.advanceagro.net/ws/api/idms/:splat"
