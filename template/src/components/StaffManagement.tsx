@@ -14,6 +14,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { api, ResponseTeam } from '../lib/api';
 import { useToast } from './Toast';
 
 const ROLE_OPTIONS = [
@@ -34,24 +35,31 @@ function RoleBadge({ role }: { role: string }) {
 
 export function StaffManagement() {
   const [staff, setStaff] = useState<any[]>([]);
+  const [responseTeams, setResponseTeams] = useState<ResponseTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState('');
+  const [editTeams, setEditTeams] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
   const { toast, confirm } = useToast();
 
-  const fetchStaff = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .neq('role', 'customer')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setStaff(data || []);
+      const [staffRes, teamsRes] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('*')
+          .neq('role', 'customer')
+          .order('created_at', { ascending: false }),
+        api.teams.list()
+      ]);
+      
+      if (staffRes.error) throw staffRes.error;
+      setStaff(staffRes.data || []);
+      setResponseTeams(teamsRes || []);
     } catch (error) {
-      console.error('Error fetching staff:', error);
+      console.error('Error fetching data:', error);
       toast.error('โหลดข้อมูลไม่สำเร็จ', 'กรุณาลองใหม่อีกครั้ง');
     } finally {
       setLoading(false);
@@ -59,7 +67,7 @@ export function StaffManagement() {
   };
 
   useEffect(() => {
-    fetchStaff();
+    fetchData();
   }, []);
 
   const handleApprove = async (userId: string, newRole: string) => {
@@ -70,7 +78,7 @@ export function StaffManagement() {
         .eq('id', userId);
       if (error) throw error;
       toast.success('อนุมัติสิทธิ์สำเร็จ', `กำหนด Role: ${newRole} และเปิดใช้งานแล้ว`);
-      fetchStaff();
+      fetchData();
     } catch (error) {
       console.error('Error approving staff:', error);
       toast.error('เกิดข้อผิดพลาด', 'ไม่สามารถอนุมัติได้');
@@ -85,7 +93,7 @@ export function StaffManagement() {
         .eq('id', userId);
       if (error) throw error;
       toast.success('ระงับการเข้าถึง', 'ระงับสิทธิ์ผู้ใช้งานนี้แล้ว');
-      fetchStaff();
+      fetchData();
     } catch (error) {
       console.error('Error rejecting staff:', error);
       toast.error('เกิดข้อผิดพลาด', 'ไม่สามารถทำรายการได้');
@@ -117,7 +125,7 @@ export function StaffManagement() {
         newStatus === 'active' ? 'เปิดใช้งานแล้ว' : 'ระงับการเข้าถึงแล้ว',
         `อัปเดตสถานะเรียบร้อย`
       );
-      fetchStaff();
+      fetchData();
     } catch (error) {
       console.error('Error toggling status:', error);
       toast.error('เกิดข้อผิดพลาด', 'ไม่สามารถเปลี่ยนสถานะได้');
@@ -140,15 +148,15 @@ export function StaffManagement() {
     try {
       const { error } = await supabase
         .from('user_profiles')
-        .update({ role: editRole })
+        .update({ role: editRole, teams: editRole === 'technician' ? editTeams : [] })
         .eq('id', userId);
       if (error) throw error;
-      toast.success('บันทึก Role สำเร็จ', `เปลี่ยนเป็น ${editRole} แล้ว`);
+      toast.success('บันทึกข้อมูลสำเร็จ', `อัปเดตสิทธิ์ของ ${user?.full_name || user?.email} เรียบร้อยแล้ว`);
       setEditingId(null);
-      fetchStaff();
+      fetchData();
     } catch (error) {
-      console.error('Error saving role:', error);
-      toast.error('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึก Role ได้');
+      console.error('Error saving user data:', error);
+      toast.error('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกข้อมูลได้');
     } finally {
       setSavingId(null);
     }
@@ -176,7 +184,7 @@ export function StaffManagement() {
           <p className="text-sm text-slate-500 mt-1">จัดการสิทธิ์การเข้าใช้งานและอนุมัติทีมงานจากระบบ HRMS</p>
         </div>
         <button
-          onClick={fetchStaff}
+          onClick={fetchData}
           className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
         >
           <RefreshCw size={14} />
@@ -301,16 +309,52 @@ export function StaffManagement() {
                     </div>
                   </td>
 
-                  {/* EMP ID + Department */}
-                  <td className="px-5 py-3.5">
+                  {/* EMP ID + Department + Teams */}
+                  <td className="px-5 py-3.5 align-top">
                     <p className="text-xs font-mono font-black text-slate-700">{user.emp_id || '—'}</p>
-                    {user.department && (Array.isArray(user.department) ? user.department.length > 0 : !!user.department) && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <Building2 size={12} className="text-slate-400" />
-                        <p className="text-xs text-slate-500">
-                          {Array.isArray(user.department) ? user.department.join(', ') : user.department}
-                        </p>
-                      </div>
+                    {editingId === user.id ? (
+                      editRole === 'technician' ? (
+                        <div className="mt-2 space-y-1">
+                          <p className="text-[10px] font-black text-slate-400 uppercase">กำหนดทีมตอบสนอง</p>
+                          <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                            {responseTeams.map(t => (
+                              <label key={t.id} className="flex items-center gap-1.5 cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-3 h-3 text-primary rounded border-slate-300"
+                                  checked={editTeams.includes(t.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setEditTeams(prev => [...prev, t.id]);
+                                    else setEditTeams(prev => prev.filter(id => id !== t.id));
+                                  }}
+                                />
+                                <span className="text-[10px] font-bold text-slate-700">{t.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 mt-1">Teams เฉพาะสิทธิ์ Technician</p>
+                      )
+                    ) : (
+                      <>
+                        {user.department && (Array.isArray(user.department) ? user.department.length > 0 : !!user.department) && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <Building2 size={12} className="text-slate-400" />
+                            <p className="text-xs text-slate-500">
+                              {Array.isArray(user.department) ? user.department.join(', ') : user.department}
+                            </p>
+                          </div>
+                        )}
+                        {user.teams && user.teams.length > 0 && (
+                          <div className="flex items-start gap-1 mt-1">
+                            <ShieldCheck size={12} className="text-primary/70 shrink-0 mt-0.5" />
+                            <p className="text-[10px] text-primary/80 font-bold leading-tight">
+                              {user.teams.map((tId: string) => responseTeams.find(rt => rt.id === tId)?.name || tId).join(', ')}
+                            </p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </td>
 
@@ -371,10 +415,10 @@ export function StaffManagement() {
                     ) : (
                       <div className="flex items-center justify-end gap-1.5 transition-opacity">
                         <button
-                          onClick={() => { setEditingId(user.id); setEditRole(user.role); }}
+                          onClick={() => { setEditingId(user.id); setEditRole(user.role); setEditTeams(user.teams || []); }}
                           className="flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-black hover:bg-slate-50 transition-colors"
                         >
-                          <Edit3 size={14} /> แก้ Role
+                          <Edit3 size={14} /> แก้ไขข้อมูล
                         </button>
                         <button
                           onClick={() => handleToggleStatus(user.id, user.status)}

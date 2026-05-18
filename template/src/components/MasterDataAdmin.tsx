@@ -652,25 +652,42 @@ export default function MasterDataAdmin() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Specialty</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Phone Number</label>
                         <input 
                           type="text" 
-                          value={formData.specialty || ''} 
-                          onChange={e => setFormData({ ...formData, specialty: e.target.value })}
+                          value={formData.phone || ''} 
+                          onChange={e => setFormData({ ...formData, phone: formatPhoneNumber(e.target.value) })}
                           className="w-full h-14 bg-slate-50 border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl px-5 text-sm font-bold transition-all outline-none"
-                          placeholder="เช่น Emergency"
+                          placeholder="เช่น 038-304-201"
                         />
                       </div>
                     </div>
+                    
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Phone Number</label>
-                      <input 
-                        type="text" 
-                        value={formData.phone || ''} 
-                        onChange={e => setFormData({ ...formData, phone: formatPhoneNumber(e.target.value) })}
-                        className="w-full h-14 bg-slate-50 border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl px-5 text-sm font-bold transition-all outline-none"
-                        placeholder="เช่น 038-304-201"
-                      />
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Specialty (ความเชี่ยวชาญ / หมวดหมู่ที่รับผิดชอบ)</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {data.categories.map((cat: any) => {
+                          const selectedSpecialties = formData.specialty ? formData.specialty.split(',').map((s: string) => s.trim()) : [];
+                          const isChecked = selectedSpecialties.includes(cat.name);
+                          return (
+                            <label key={cat.id} className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer bg-white">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFormData({ ...formData, specialty: [...selectedSpecialties, cat.name].join(', ') });
+                                  } else {
+                                    setFormData({ ...formData, specialty: selectedSpecialties.filter((s: string) => s !== cat.name).join(', ') });
+                                  }
+                                }}
+                                className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary"
+                              />
+                              <span className="text-sm font-bold text-slate-700">{cat.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}

@@ -19,8 +19,10 @@ export function getAvatarUrl(empId?: string | null) {
 type TicketListOptions = {
   role?: string;
   profile?: {
+    id?: string;
     full_name?: string | null;
     department?: string[] | null;
+    teams?: string[] | null;
   } | null;
   mode?: 'board' | 'assigned';
 };
@@ -28,6 +30,17 @@ type TicketListOptions = {
 const isTicketAssignedToProfile = (ticket: any, teams: ResponseTeam[], profile?: TicketListOptions['profile']) => {
   if (!profile) return true;
   
+  // 1. Direct responder assignment check (using name or id if available)
+  if (ticket.responder === profile.full_name) return true;
+
+  // 2. Team-based assignment check
+  if (ticket.assignee && profile.teams && profile.teams.length > 0) {
+    const assignedTeam = teams.find((team) => team.name === ticket.assignee);
+    if (assignedTeam && profile.teams.includes(assignedTeam.id)) return true;
+    if (profile.teams.includes(ticket.assignee)) return true;
+  }
+  
+  // Legacy logic fallback (using departments)
   const profileDepts = Array.isArray(profile.department) ? profile.department : (profile.department ? [profile.department] : []);
   
   const values = new Set([
@@ -45,7 +58,7 @@ const isTicketAssignedToProfile = (ticket: any, teams: ResponseTeam[], profile?:
     assignedTeam.id,
     assignedTeam.name,
     assignedTeam.role_label,
-    assignedTeam.specialty,
+    ...(assignedTeam.specialty ? assignedTeam.specialty.split(',').map((s: string) => s.trim()) : []),
     assignedTeam.area,
   ].filter(Boolean);
 
@@ -81,17 +94,30 @@ export const api = {
             const profileDepts = Array.isArray(options.profile?.department) 
               ? options.profile?.department 
               : (options.profile?.department ? [options.profile.department] : []);
+              
+            const profileTeams = Array.isArray(options.profile?.teams) ? options.profile?.teams : [];
 
-            if (profileDepts.length === 0) return true; // Show all unassigned if no department set
+            if (profileDepts.length === 0 && profileTeams.length === 0) return true; // Show all unassigned if no department/team set
             
             // Check if any of technician's departments match the ticket category
             const cat = (ticket.category || '').toLowerCase();
-            return profileDepts.some(dept => {
+            
+            // Check legacy departments
+            const matchesDept = profileDepts.some(dept => {
               const d = (dept || '').toLowerCase();
               // Generic technician/staff can see all open unassigned tickets
               if (d === 'technician' || d === 'staff' || d === 'all') return true;
               return d.includes(cat) || cat.includes(d);
             });
+            
+            if (matchesDept) return true;
+            
+            // Check team specialties
+            if (profileTeams.length > 0) {
+              const myTeams = teams.filter(t => profileTeams.includes(t.id) || profileTeams.includes(t.name));
+              const mySpecialties = myTeams.flatMap(t => t.specialty ? t.specialty.split(',').map(s => s.trim().toLowerCase()) : []);
+              if (mySpecialties.some(s => s.includes(cat) || cat.includes(s))) return true;
+            }
           }
           
           return false;
