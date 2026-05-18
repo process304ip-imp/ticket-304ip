@@ -823,14 +823,16 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
       <section className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex border-b border-slate-200">
-              <button onClick={() => setActiveTab('logs')} className={`px-5 py-3 text-sm font-black border-b-2 ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}>
-                รายละเอียดและ Log
-              </button>
-              <button onClick={() => setActiveTab('details')} className={`px-5 py-3 text-sm font-black border-b-2 ${activeTab === 'details' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}>
-                บริษัทที่ได้รับผลกระทบ
-              </button>
-            </div>
+            {role !== 'customer' && (
+              <div className="flex border-b border-slate-200">
+                <button onClick={() => setActiveTab('logs')} className={`px-5 py-3 text-sm font-black border-b-2 ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}>
+                  รายละเอียดและ Log
+                </button>
+                <button onClick={() => setActiveTab('details')} className={`px-5 py-3 text-sm font-black border-b-2 ${activeTab === 'details' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}>
+                  บริษัทที่ได้รับผลกระทบ
+                </button>
+              </div>
+            )}
 
             <div className="p-5 md:p-6 space-y-8">
               {/* Core Details - Always visible or in first tab */}
@@ -1017,7 +1019,7 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                     )})}
                   </div>
                 </div>
-              ) : (
+              ) : role !== 'customer' ? (
                 <div className="space-y-6">
                   {affectedCompanies.length > 0 ? (
                     <div className="space-y-6">
@@ -1070,7 +1072,7 @@ export function TicketDetails({ ticketId, role, onAddNotification, lang = 'TH' }
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
 
