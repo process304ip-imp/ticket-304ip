@@ -82,6 +82,8 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [isReopenModalOpen, setIsReopenModalOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
   const [logText, setLogText] = useState('');
   const [feedback, setFeedback] = useState({ 
     fixScore: 0, 
@@ -357,10 +359,10 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
       await api.tickets.addLog({
         ticket_id: ticket.id,
         message: `ปิดงานพร้อม Feedback: คุณภาพการซ่อม ${feedback.fixScore}/5, การบริการ ${feedback.serviceScore}/5`,
-        author_name: profile?.full_name || 'CRM Staff',
+        author_name: profile?.full_name || (role === 'customer' ? 'Customer' : 'CRM Staff'),
         author_id: user?.id || null,
-        author_role: 'crm',
-        status_from: 'Resolved (CRM)',
+        author_role: role,
+        status_from: ticket.status,
         status_to: 'Closed'
       });
 
@@ -371,6 +373,47 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
     } catch (error) {
       console.error('Feedback error:', error);
       toast.error('ไม่สามารถส่ง feedback ได้', 'กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!reopenReason.trim() || !ticket) {
+      toast.warning('กรุณาระบุเหตุผล', 'กรุณาระบุเหตุผลในการส่งงานกลับไปแก้ไข');
+      return;
+    }
+    try {
+      setLoading(true);
+      // 1. Update status to In Progress
+      await api.tickets.update(ticket.id, { 
+        status: 'In Progress',
+        auto_close_at: null 
+      }, {
+        name: profile?.full_name || 'Customer',
+        role: role,
+        id: user?.id
+      });
+
+      // 2. Add Log for the reopen
+      await api.tickets.addLog({
+        ticket_id: ticket.id,
+        message: `เปิดงานใหม่ (Reopen): ${reopenReason.trim()}`,
+        author_name: profile?.full_name || (role === 'customer' ? 'Customer' : 'CRM Staff'),
+        author_id: user?.id || null,
+        author_role: role,
+        status_from: ticket.status,
+        status_to: 'In Progress'
+      });
+
+      setIsReopenModalOpen(false);
+      setReopenReason('');
+      toast.success('เปิดงานใหม่สำเร็จ', 'ส่งเรื่องกลับไปยังทีมช่างเพื่อดำเนินการแก้ไขต่อแล้ว');
+      onAddNotification('เปิดงานใหม่ (Reopen)', `Ticket ${ticket.id} ถูกเปิดงานใหม่อีกครั้ง`, 'update');
+      fetchData();
+    } catch (error) {
+      console.error('Reopen error:', error);
+      toast.error('ไม่สามารถเปิดงานใหม่ได้', 'กรุณาลองใหม่อีกครั้ง');
     } finally {
       setLoading(false);
     }
@@ -639,20 +682,117 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
         </section>
       )}
 
-      {ticket.status === 'Resolved (CRM)' && (
-        <section className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
-            <h3 className="font-black text-emerald-800">งานถูก Confirm โดย CRM แล้ว</h3>
-            <p className="text-sm text-emerald-700 mt-1">ระบบจะ auto-close ภายใน 48 ชั่วโมง (SLA หยุดนับแล้ว): {safeDate(ticket.auto_close_at)}</p>
+      {ticket.status === 'Resolved (Tech)' && (
+        <section className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 p-3 bg-amber-100 rounded-xl text-amber-600">
+              <Zap size={24} className="animate-pulse" />
+            </div>
+            <div>
+              <h3 className="font-black text-amber-900 text-lg">ช่างแจ้งเสร็จงานเรียบร้อยแล้ว (Resolved by Tech)</h3>
+              {role === 'customer' ? (
+                <p className="text-sm text-amber-700 mt-1 leading-relaxed">
+                  กรุณาตรวจสอบผลงาน หากเรียบร้อยกรุณากดให้คะแนนเพื่อปิดงาน หรือกดส่งเรื่องแก้ไขหากต้องการให้ช่างดำเนินการเพิ่มเติม
+                </p>
+              ) : (
+                <p className="text-sm text-amber-700 mt-1 leading-relaxed">
+                  อยู่ระหว่างรอการยืนยันผลงานโดย CRM หรือรอให้คะแนนความพึงพอใจโดยลูกค้า
+                </p>
+              )}
+            </div>
           </div>
-          {role === 'crm' && (
-            <button
-              onClick={() => setIsFeedbackModalOpen(true)}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-emerald-700"
-            >
-              ให้ Feedback และปิดงานทันที
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {role === 'customer' ? (
+              <>
+                <button
+                  onClick={() => setIsFeedbackModalOpen(true)}
+                  className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-black shadow-md hover:bg-emerald-700 hover:shadow-emerald-100 transition-all flex items-center gap-1.5"
+                >
+                  <Star size={16} className="fill-white" />
+                  ยืนยันและปิดงาน (Feedback)
+                </button>
+                <button
+                  onClick={() => {
+                    setReopenReason('');
+                    setIsReopenModalOpen(true);
+                  }}
+                  className="px-5 py-2.5 border border-red-200 text-red-700 bg-white hover:bg-red-50 rounded-xl text-sm font-black transition-all"
+                >
+                  ยังแก้ไขไม่สำเร็จ (Reopen)
+                </button>
+              </>
+            ) : (
+              <>
+                {(role === 'crm' || role === 'admin') && (
+                  <button
+                    onClick={() => handleStatusUpdate('Resolved (CRM)')}
+                    className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black shadow-md hover:bg-indigo-700 hover:shadow-indigo-100 transition-all flex items-center gap-1.5"
+                  >
+                    <CheckCircle size={16} />
+                    Confirm Resolve (CRM)
+                  </button>
+                )}
+                {(role === 'crm' || role === 'admin') && (
+                  <button
+                    onClick={() => setIsFeedbackModalOpen(true)}
+                    className="px-5 py-2.5 border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50 rounded-xl text-sm font-black transition-all flex items-center gap-1.5"
+                  >
+                    <Star size={16} className="fill-emerald-700" />
+                    ปิดงานแทนลูกค้า (Feedback)
+                  </button>
+                )}
+                {(role === 'crm' || role === 'admin') && (
+                  <button
+                    onClick={() => {
+                      setReopenReason('');
+                      setIsReopenModalOpen(true);
+                    }}
+                    className="px-5 py-2.5 border border-red-200 text-red-700 bg-white hover:bg-red-50 rounded-xl text-sm font-black transition-all"
+                  >
+                    ส่งเรื่องกลับไปแก้ไข (Reopen)
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
+      {ticket.status === 'Resolved (CRM)' && (
+        <section className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 p-3 bg-emerald-100 rounded-xl text-emerald-600">
+              <CheckCircle size={24} />
+            </div>
+            <div>
+              <h3 className="font-black text-emerald-950 text-lg">งานถูกยืนยันความเรียบร้อยโดย CRM แล้ว</h3>
+              <p className="text-sm text-emerald-800 mt-1 leading-relaxed">
+                ระบบจะปิดงานอัตโนมัติภายใน 48 ชม.: <span className="font-black">{safeDate(ticket.auto_close_at)}</span> (SLA หยุดนับแล้ว)
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {(role === 'customer' || role === 'crm' || role === 'admin') && (
+              <button
+                onClick={() => setIsFeedbackModalOpen(true)}
+                className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-black shadow-md hover:bg-emerald-700 hover:shadow-emerald-100 transition-all flex items-center gap-1.5"
+              >
+                <Star size={16} className="fill-white" />
+                {role === 'customer' ? 'ให้ Feedback และปิดงานทันที' : 'บันทึก Feedback และปิดงานทันที'}
+              </button>
+            )}
+            {(role === 'customer' || role === 'crm' || role === 'admin') && (
+              <button
+                onClick={() => {
+                  setReopenReason('');
+                  setIsReopenModalOpen(true);
+                }}
+                className="px-5 py-2.5 border border-red-200 text-red-700 bg-white hover:bg-red-50 rounded-xl text-sm font-black transition-all"
+              >
+                {role === 'customer' ? 'ยังแก้ไขไม่สำเร็จ (Reopen)' : 'ส่งเรื่องกลับไปแก้ไข (Reopen)'}
+              </button>
+            )}
+          </div>
         </section>
       )}
 
@@ -1188,6 +1328,47 @@ export function TicketDetails({ ticketId, role, onAddNotification }: TicketDetai
           </div>
         </Modal>
       )}
+
+      {isReopenModalOpen && (
+        <Modal title="ส่งกลับแก้ไข / เปิดงานใหม่ (Reopen Ticket)" onClose={() => setIsReopenModalOpen(false)}>
+          <div className="space-y-4">
+            <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex items-start gap-3">
+              <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+              <div>
+                <h4 className="font-bold text-red-900 text-sm">การเปิดงานใหม่ (Reopen)</h4>
+                <p className="text-xs text-red-700 leading-relaxed mt-1">
+                  กรุณาระบุรายละเอียดข้อบกพร่อง หรือส่วนที่ยังไม่เรียบร้อย เพื่อให้ทีมช่างรับทราบและดำเนินการแก้ไขเพิ่มเติมได้อย่างถูกต้อง
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">เหตุผลที่ต้องการเปิดงานใหม่ *</label>
+              <textarea
+                value={reopenReason}
+                onChange={(e) => setReopenReason(e.target.value)}
+                rows={4}
+                className="w-full form-field text-sm bg-white border border-slate-200 focus:border-red-500 focus:ring-red-500 rounded-xl p-3"
+                placeholder="ระบุสิ่งที่ต้องการให้แก้ไขเพิ่มเติม เช่น 'ท่อน้ำด้านข้างยังรั่วอยู่เล็กน้อย' หรือ 'ผลลัพธ์ยังไม่ตรงตามที่ตกลงกัน'..."
+              />
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setIsReopenModalOpen(false)} 
+                className="flex-1 py-3 px-4 border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors text-sm"
+              >
+                ยกเลิก
+              </button>
+              <button 
+                onClick={handleReopen} 
+                className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors text-sm shadow-md"
+              >
+                ยืนยันเปิดงานใหม่
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* ── Assign Team Modal ── */}
       {isAssignModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
